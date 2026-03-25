@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -671,9 +672,15 @@
   body.fullscreen-mode .wallpaper-hero { height: 100vh; }
   body.fullscreen-mode #appInfoSection { display: none; }
 
-  /* 전체화면 모드 — 설정/갤러리 페이지 완전 숨김 */
-  body.fullscreen-mode #page-settings,
-  body.fullscreen-mode #page-gallery { display: none !important; }
+  /* 전체화면 모드 — #app 전체 숨기고 page-home만 표시 */
+  body.fullscreen-mode #app {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  body.fullscreen-mode #page-home {
+    visibility: visible;
+    pointer-events: auto;
+  }
 
   /* 전체화면 버튼 */
   #fullscreenBtn {
@@ -1946,25 +1953,28 @@ window['__onGCastApiAvailable'] = function(isAvailable) {
 };
 
 function initCastApi() {
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // ▼ 여기에 Google Cast Developer Console에서
-  //   발급받은 App ID를 입력하세요
-  //   등록 방법: cast.google.com/publish → New Application
-  //   → Custom Receiver → Receiver URL: 
-  //   https://your-domain.com/galerie-cast-receiver.html
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const GALERIE_APP_ID = '83B532DF'; // Google Cast SDK App ID (cast.google.com 등록)
 
-  cast.framework.CastContext.getInstance().setOptions({
-    receiverApplicationId: GALERIE_APP_ID,
-    autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
-  });
+  try {
+    cast.framework.CastContext.getInstance().setOptions({
+      receiverApplicationId: GALERIE_APP_ID,
+      autoJoinPolicy: chrome.cast.AutoJoinPolicy.TAB_AND_ORIGIN_SCOPED,
+      resumeSavedSession: false,
+    });
+    console.log('[Cast] SDK 초기화 완료. App ID:', GALERIE_APP_ID);
+  } catch (e) {
+    console.error('[Cast] SDK 초기화 실패:', e);
+    return;
+  }
 
   const castContext = cast.framework.CastContext.getInstance();
+
+  // 상태 변경 리스너
   castContext.addEventListener(
     cast.framework.CastContextEventType.CAST_STATE_CHANGED,
     (e) => {
       const state = e.castState;
+      console.log('[Cast] 상태 변경:', state);
       if (state === cast.framework.CastState.CONNECTED) {
         const session = castContext.getCurrentSession();
         castState.active = true;
@@ -1975,27 +1985,56 @@ function initCastApi() {
       }
     }
   );
+
+  // Cast 버튼 아이콘 상태 업데이트
+  castContext.addEventListener(
+    cast.framework.CastContextEventType.CAST_STATE_CHANGED,
+    (e) => {
+      const btn = document.getElementById('castBtn');
+      if (!btn) return;
+      const isAvailable = e.castState !== cast.framework.CastState.NO_DEVICES_AVAILABLE;
+      btn.style.opacity = isAvailable ? '1' : '0.4';
+      btn.title = isAvailable ? 'TV로 전송 (Chromecast)' : 'Chromecast 기기 없음';
+    }
+  );
 }
 
 function openDonation(platform) {
   const urls = {
     kofi:  'https://ko-fi.com/',         // ← ko-fi.com/계정명 으로 교체하세요
-    kakao: 'https://qr.kakaopay.com/Ej8GGIrq3',  // ← 카카오페이 → 송금 → QR 생성 후 URL로 교체하세요
+    // 카카오페이 송금: 카카오페이 앱 → 더보기 → 나의 QR → QR 링크 복사 → 아래 교체
+    kakao: 'https://qr.kakaopay.com/',   // ← 본인 카카오페이 QR 링크로 교체 필요
   };
+
+  if (platform === 'kakao') {
+    // 카카오페이 QR 링크가 설정되지 않은 경우 안내
+    const kakaoUrl = urls.kakao;
+    if (kakaoUrl === 'https://qr.kakaopay.com/') {
+      showToast('카카오페이 앱 → 더보기 → 나의 QR에서 링크를 확인하세요', '');
+      return;
+    }
+    window.open(kakaoUrl, '_blank');
+    return;
+  }
+
   const url = urls[platform];
   if (url) window.open(url, '_blank');
-  else showToast('후원 링크를 설정해 주세요.', '');
 }
 
 function openCastModal() {
-  // Cast SDK 로드 여부 확인
+  // ── Cast SDK 로드 여부 확인 ──
   if (typeof cast === 'undefined' || !cast.framework) {
-    showToast('Cast SDK 로드 중입니다. 잠시 후 다시 시도해주세요.', '');
+    showToast('Cast SDK 미로드 — HTTPS 환경(GitHub Pages)에서 실행하세요.', '');
+    console.warn('[Cast] SDK 미로드. typeof cast:', typeof cast);
     return;
   }
 
   const ctx = cast.framework.CastContext.getInstance();
   const state = ctx.getCastState();
+
+  // 디버그용 상태 로그
+  console.log('[Cast] CastState:', state);
+  console.log('[Cast] CastState enum:', cast.framework.CastState);
 
   // 이미 연결된 경우 → 중단
   if (state === cast.framework.CastState.CONNECTED) {
@@ -2003,21 +2042,33 @@ function openCastModal() {
     return;
   }
 
-  // 기기 없음
+  // NO_DEVICES_AVAILABLE 이어도 requestSession 시도
+  // (SDK가 기기 탐색 중이거나 일시적 상태일 수 있음)
   if (state === cast.framework.CastState.NO_DEVICES_AVAILABLE) {
-    showToast('근처에 Chromecast 기기가 없습니다. 같은 Wi-Fi인지 확인하세요.', '');
-    return;
+    console.warn('[Cast] NO_DEVICES_AVAILABLE — requestSession 강제 시도');
   }
 
   // 실제 Google Cast 기기 선택 다이얼로그 호출
-  ctx.requestSession().then(() => {
-    // 연결 성공은 CAST_STATE_CHANGED 이벤트에서 처리됨
-  }).catch((err) => {
-    if (err === cast.framework.CastContextEventType.SESSION_ENDED) return;
-    if (err === 'cancel') return; // 사용자가 직접 취소
-    console.warn('Cast requestSession 오류:', err);
-    showToast('기기 연결에 실패했습니다. 다시 시도해주세요.', '');
-  });
+  ctx.requestSession()
+    .then(() => {
+      console.log('[Cast] requestSession 성공');
+    })
+    .catch((err) => {
+      console.warn('[Cast] requestSession 오류:', err);
+      // 사용자가 취소한 경우 조용히 처리
+      if (err === 'cancel' ||
+          err === cast.framework.CastContextEventType.SESSION_ENDED ||
+          (typeof err === 'string' && err.includes('cancel'))) {
+        return;
+      }
+      // NO_DEVICES 에러인 경우
+      if (err === cast.framework.CastState.NO_DEVICES_AVAILABLE ||
+          (typeof err === 'string' && err.includes('RECEIVER_UNAVAILABLE'))) {
+        showToast('Chromecast 기기를 찾을 수 없습니다. 같은 Wi-Fi + Chrome 브라우저를 확인하세요.', '');
+        return;
+      }
+      showToast('연결 실패: ' + (err?.message || err), '');
+    });
 }
 
 function onCastConnected() {
