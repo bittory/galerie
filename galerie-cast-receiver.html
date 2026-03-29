@@ -1,264 +1,116 @@
+
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
   <title>GALERIE Cast Receiver</title>
-
-  <!-- Google Cast Receiver SDK v3 -->
   <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    html, body {
-      width: 100%; height: 100%;
-      background: #0d0c09;
-      overflow: hidden;
-      font-family: system-ui, -apple-system, sans-serif;
-    }
-
-    /* ── 배경 레이어 ── */
-    #bg-blur {
-      position: fixed; inset: 0; z-index: 0;
-      background-size: cover;
-      background-position: center;
-      filter: blur(60px) saturate(1.4) brightness(0.5);
-      transform: scale(1.12);
-      transition: background-image 1.2s ease;
-    }
-    #bg-image {
-      position: fixed; inset: 0; z-index: 1;
-      background-size: contain;
-      background-position: center;
-      background-repeat: no-repeat;
-      transition: opacity 1s ease, background-image 0s ease 0.5s;
-    }
-    #bg-overlay {
-      position: fixed; inset: 0; z-index: 2;
-      background: linear-gradient(
-        to top,
-        rgba(0,0,0,0.85) 0%,
-        rgba(0,0,0,0.1) 40%,
-        transparent 70%
-      );
-    }
-
-    /* ── 작품 정보 오버레이 ── */
-    #artwork-info {
-      position: fixed;
-      bottom: 60px; left: 72px;
-      z-index: 10;
-      opacity: 0;
-      transform: translateY(20px);
-      transition: opacity 0.8s ease, transform 0.8s ease;
-    }
-    #artwork-info.visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    #art-badge {
-      display: inline-block;
-      font-size: 11px;
-      letter-spacing: 3px;
-      color: #c9a84c;
-      border: 1px solid rgba(201,168,76,0.4);
-      padding: 4px 14px;
-      margin-bottom: 16px;
-      text-transform: uppercase;
-    }
-    #art-title {
-      font-size: 52px;
-      font-weight: 300;
-      color: #f5f0e8;
-      letter-spacing: 1px;
-      line-height: 1.15;
-      margin-bottom: 10px;
-      text-shadow: 0 2px 20px rgba(0,0,0,0.5);
-    }
-    #art-artist {
-      font-size: 22px;
-      color: rgba(245,240,232,0.7);
-      font-style: italic;
-      margin-bottom: 8px;
-    }
-    #art-meta {
-      font-size: 15px;
-      color: rgba(245,240,232,0.45);
-      letter-spacing: 2px;
-    }
-    #art-source {
-      font-size: 12px;
-      color: rgba(201,168,76,0.5);
-      letter-spacing: 2px;
-      margin-top: 6px;
-    }
-
-    /* ── GALERIE 워터마크 ── */
-    #watermark {
-      position: fixed;
-      top: 40px; right: 56px;
-      z-index: 10;
-      text-align: right;
-    }
-    #watermark-title {
-      font-size: 20px;
-      letter-spacing: 8px;
-      color: rgba(245,240,232,0.35);
-    }
-    #watermark-sub {
-      font-size: 10px;
-      letter-spacing: 5px;
-      color: rgba(201,168,76,0.25);
-      margin-top: 2px;
-    }
-
-    /* ── 로딩 화면 ── */
-    #loading {
-      position: fixed; inset: 0; z-index: 100;
-      background: #0d0c09;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 20px;
-      transition: opacity 0.6s ease;
-    }
-    #loading.hidden { opacity: 0; pointer-events: none; }
-    #loading-title {
-      font-size: 32px;
-      letter-spacing: 12px;
-      color: #c9a84c;
-    }
-    #loading-sub {
-      font-size: 12px;
-      letter-spacing: 5px;
-      color: rgba(245,240,232,0.35);
-    }
-    #loading-bar-wrap {
-      width: 200px; height: 1px;
-      background: rgba(255,255,255,0.1);
-    }
-    #loading-bar {
-      height: 100%;
-      background: #c9a84c;
-      width: 0;
-      animation: loadAnim 2s ease forwards;
-    }
-    @keyframes loadAnim {
-      0%  { width: 0; }
-      60% { width: 70%; }
-      100%{ width: 100%; }
-    }
-
-    /* ── 페이드 트랜지션 ── */
-    #bg-image.fade-out { opacity: 0; transition: opacity 0.6s ease; }
-    #bg-image.fade-in  { opacity: 1; transition: opacity 0.8s ease 0.3s; }
+    html, body { width:100%; height:100%; background:#0d0c09; overflow:hidden; font-family:'Malgun Gothic','맑은 고딕',system-ui,sans-serif; }
+    #bg-blur { position:fixed; inset:0; z-index:0; background-size:cover; background-position:center; filter:blur(60px) saturate(1.4) brightness(0.5); transform:scale(1.12); opacity:0; transition:opacity 1.0s ease; }
+    #bg-image { position:fixed; inset:0; z-index:1; background-size:contain; background-position:center; background-repeat:no-repeat; opacity:0; transition:opacity 1.0s ease; }
+    #bg-overlay { position:fixed; inset:0; z-index:2; background:transparent; }
+    #artwork-info { position:fixed; bottom:60px; left:72px; z-index:10; opacity:0; transform:translateY(20px); transition:opacity 0.8s ease,transform 0.8s ease; }
+    #artwork-info.visible { opacity:1; transform:translateY(0); }
+    #art-badge { display:none; }
+    #art-title { font-size:clamp(22px,2.2vw,32px); font-weight:300; color:#f5f0e8; letter-spacing:1px; line-height:1.2; margin-bottom:10px; text-shadow:0 2px 20px rgba(0,0,0,0.8); }
+    #art-artist { font-size:18px; color:rgba(245,240,232,0.75); font-style:italic; margin-bottom:6px; }
+    #art-meta { font-size:13px; color:rgba(245,240,232,0.45); letter-spacing:2px; }
+    #watermark { position:fixed; top:40px; right:56px; z-index:10; text-align:right; }
+    #watermark-title { font-size:20px; letter-spacing:8px; color:rgba(245,240,232,0.35); }
+    #watermark-sub { font-size:10px; letter-spacing:5px; color:rgba(201,168,76,0.25); margin-top:2px; }
+    #loading { position:fixed; inset:0; z-index:100; background:#0d0c09; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; transition:opacity 0.6s ease; }
+    #loading.hidden { opacity:0; pointer-events:none; }
+    #loading-title { font-size:32px; letter-spacing:12px; color:#c9a84c; }
+    #loading-sub { font-size:12px; letter-spacing:5px; color:rgba(245,240,232,0.35); }
+    #loading-bar-wrap { width:200px; height:1px; background:rgba(255,255,255,0.1); }
+    #loading-bar { height:100%; background:#c9a84c; width:0; animation:loadAnim 2s ease forwards; }
+    @keyframes loadAnim { 0%{width:0} 60%{width:70%} 100%{width:100%} }
   </style>
 </head>
 <body>
-
-<!-- 로딩 -->
 <div id="loading">
   <div id="loading-title">GALERIE</div>
   <div id="loading-sub">MASTERPIECE GALLERY</div>
   <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
 </div>
-
-<!-- 배경 레이어 -->
 <div id="bg-blur"></div>
 <div id="bg-image"></div>
 <div id="bg-overlay"></div>
-
-<!-- 워터마크 -->
 <div id="watermark">
   <div id="watermark-title">GALERIE</div>
   <div id="watermark-sub">MASTERPIECE GALLERY</div>
 </div>
-
-<!-- 작품 정보 -->
 <div id="artwork-info">
-  <div id="art-badge">✦ PUBLIC DOMAIN</div>
+  <div id="art-badge"></div>
   <div id="art-title">별이 빛나는 밤</div>
   <div id="art-artist">Vincent van Gogh</div>
   <div id="art-meta">1889 · 포스트 인상주의 · 네덜란드</div>
-  <div id="art-source"></div>
 </div>
-
 <script>
-// ── Cast Receiver Framework 초기화 ──
-const context  = cast.framework.CastReceiverContext.getInstance();
+const MAX_W = 3840, MAX_H = 2160;
+function limitTo4K(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.onload = () => {
+      if (img.naturalWidth <= MAX_W && img.naturalHeight <= MAX_H) { resolve(url); return; }
+      const ratio = Math.min(MAX_W / img.naturalWidth, MAX_H / img.naturalHeight);
+      const w = Math.round(img.naturalWidth * ratio);
+      const h = Math.round(img.naturalHeight * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = () => resolve(url);
+    img.src = url;
+  });
+}
+const context = cast.framework.CastReceiverContext.getInstance();
 const playerMgr = context.getPlayerManager();
-
-// ── 커스텀 메시지 채널 (Sender → Receiver 작품정보 수신) ──
 const NAMESPACE = 'urn:x-cast:com.galerie.artwork';
-
 context.addCustomMessageListener(NAMESPACE, (event) => {
-  const data = event.data;
-  if (data && data.type === 'ARTWORK') {
-    displayArtwork(data);
-  }
+  if (event.data && event.data.type === 'ARTWORK') displayArtwork(event.data);
 });
-
-// ── 미디어 로드 인터셉터 ──
-playerMgr.setMessageInterceptor(
-  cast.framework.messages.MessageType.LOAD,
-  (request) => {
-    // customData에 작품 메타데이터가 있으면 표시
-    const custom = request.media && request.media.customData;
-    if (custom && custom.title) {
-      setTimeout(() => displayArtwork(custom), 400);
-    }
-    return request;
-  }
-);
-
-// ── 작품 표시 함수 ──
+playerMgr.setMessageInterceptor(cast.framework.messages.MessageType.LOAD, (request) => {
+  const custom = request.media && request.media.customData;
+  if (custom && custom.title) setTimeout(() => displayArtwork(custom), 400);
+  return request;
+});
 function displayArtwork(data) {
   const bgBlur  = document.getElementById('bg-blur');
   const bgImage = document.getElementById('bg-image');
   const info    = document.getElementById('artwork-info');
-
-  // 페이드 아웃
+  const imgUrl  = data.url || data.imageUrl || '';
+  if (!imgUrl) return;
   info.classList.remove('visible');
-  bgImage.classList.add('fade-out');
-
-  setTimeout(() => {
-    // 이미지 교체
-    const imgUrl = data.url || data.imageUrl || '';
-    bgBlur.style.backgroundImage  = `url(${imgUrl})`;
-    bgImage.style.backgroundImage = `url(${imgUrl})`;
-
-    // 텍스트 업데이트
-    document.getElementById('art-title').textContent  = data.title  || '';
-    document.getElementById('art-artist').textContent = data.artist || '';
-
-    const year = data.year && data.year > 0 ? data.year : '연도미상';
-    document.getElementById('art-meta').textContent =
-      `${year}${data.movement ? ' · ' + data.movement : ''}${data.origin ? ' · ' + data.origin : ''}`;
-
-    const srcEl = document.getElementById('art-source');
-    srcEl.textContent = data.source ? `© ${data.source}` : '';
-
-    // 페이드 인
-    bgImage.classList.remove('fade-out');
-    bgImage.classList.add('fade-in');
+  bgBlur.style.transition  = 'opacity 0.35s ease';
+  bgImage.style.transition = 'opacity 0.35s ease';
+  bgBlur.style.opacity  = 0;
+  bgImage.style.opacity = 0;
+  limitTo4K(imgUrl).then(finalUrl => {
     setTimeout(() => {
-      bgImage.classList.remove('fade-in');
-      info.classList.add('visible');
-    }, 900);
-  }, 600);
+      bgBlur.style.backgroundImage  = `url(${finalUrl})`;
+      bgImage.style.backgroundImage = `url(${finalUrl})`;
+      bgBlur.style.transition  = 'opacity 1.0s ease';
+      bgImage.style.transition = 'opacity 1.0s ease';
+      bgBlur.style.opacity  = 1;
+      bgImage.style.opacity = 1;
+      document.getElementById('art-title').textContent  = data.title  || '';
+      document.getElementById('art-artist').textContent = data.artist || '';
+      const year = data.year && data.year > 0 ? data.year : '연도미상';
+      document.getElementById('art-meta').textContent =
+        year + (data.movement ? ' · ' + data.movement : '') + (data.origin ? ' · ' + data.origin : '');
+      setTimeout(() => info.classList.add('visible'), 400);
+    }, 370);
+  });
 }
-
-// ── 로딩 완료 처리 ──
-setTimeout(() => {
-  document.getElementById('loading').classList.add('hidden');
-}, 2200);
-
-// ── Receiver 시작 ──
-context.start({
-  disableIdleTimeout: true,
-  touchScreenOptimizedApp: false,
-});
+setTimeout(() => document.getElementById('loading').classList.add('hidden'), 2200);
+context.start({ disableIdleTimeout: true, touchScreenOptimizedApp: false });
 </script>
 </body>
 </html>
