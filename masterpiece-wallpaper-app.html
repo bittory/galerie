@@ -4,10 +4,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="referrer" content="no-referrer">
+<!-- referrer: no-referrer는 Wikimedia 이미지용. Cast SDK는 origin으로 처리 -->
+<meta name="referrer" content="origin">
 <title>Galerie — 세계 명화 배경화면</title>
 
-<!-- Google Cast SDK -->
+<!-- Google Cast SDK: __onGCastApiAvailable 반드시 SDK 로드 전에 선언 -->
+<script>
+window['__onGCastApiAvailable'] = function(isAvailable) {
+  console.log('[Cast] API available:', isAvailable);
+  if (isAvailable) {
+    initCastApi();
+  } else {
+    console.warn('[Cast] API not available');
+  }
+};
+</script>
 <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
 <style>
   :root {
@@ -70,13 +81,7 @@
   }
   #bg-overlay {
     position: fixed; inset: 0; z-index: 3;
-    background: linear-gradient(
-      to bottom,
-      rgba(0,0,0,0.35) 0%,
-      rgba(0,0,0,0.0) 30%,
-      rgba(0,0,0,0.0) 65%,
-      rgba(0,0,0,0.6) 100%
-    );
+    background: transparent; /* 그라데이션 제거 — 원작 색감 보호 */
   }
 
   /* ── LAYOUT ── */
@@ -155,22 +160,13 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
-  .artwork-badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 12px;
-    border: 1px solid var(--border);
-    font-size: 11px; letter-spacing: 3px; color: var(--gold);
-    font-family: var(--font-title);
-    margin-bottom: 16px;
-    background: rgba(0,0,0,0.4);
-    backdrop-filter: blur(8px);
-  }
-  .artwork-badge.premium { border-color: var(--gold); background: rgba(201,168,76,0.15); }
-  .artwork-badge.free { border-color: var(--free); color: var(--free); background: rgba(76,175,125,0.1); }
+  .artwork-badge { display: none; } /* PUBLIC DOMAIN/FREE 표기 숨김 */
+  .artwork-badge.premium { display: none; }
+  .artwork-badge.free { display: none; }
 
   .artwork-title {
     font-family: var(--font-title);
-    font-size: clamp(32px, 5vw, 56px);
+    font-size: clamp(18px, 2.8vw, 32px);
     font-weight: 300;
     line-height: 1.1;
     color: #fff;
@@ -394,6 +390,10 @@
 
   .social-btn.google { border-color: rgba(66,133,244,0.4); }
   .social-btn.google:hover { background: rgba(66,133,244,0.1); border-color: #4285f4; }
+  .social-btn.github { border-color: rgba(255,255,255,0.2); }
+  .social-btn.github:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.5); }
+  .social-btn.facebook { border-color: rgba(24,119,242,0.4); }
+  .social-btn.facebook:hover { background: rgba(24,119,242,0.1); border-color: #1877F2; }
 
   .social-btn.apple { border-color: rgba(255,255,255,0.2); }
   .social-btn.apple:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.5); }
@@ -731,15 +731,7 @@
   }
 
   /* 전체화면 오버레이 더 어둡게 in fullscreen */
-  body.fullscreen-mode #bg-overlay {
-    background: linear-gradient(
-      to bottom,
-      rgba(0,0,0,0.15) 0%,
-      rgba(0,0,0,0.0) 30%,
-      rgba(0,0,0,0.0) 70%,
-      rgba(0,0,0,0.5) 100%
-    );
-  }
+  body.fullscreen-mode #bg-overlay { background: transparent; }
 </style>
 </head>
 <body>
@@ -916,6 +908,16 @@
         <div><div class="settings-label">기기 연결</div><div class="settings-desc" id="castSettingsStatus">연결된 기기 없음</div></div>
         <button class="nav-btn" onclick="openCastModal()" style="border-color:#4fc3f7;color:#4fc3f7">기기 검색</button>
       </div>
+      <!-- Samsung TV 활성화 안내 -->
+      <div style="margin-top:14px;padding:14px 16px;border-radius:12px;background:rgba(79,195,247,0.06);border:0.5px solid rgba(79,195,247,0.2)">
+        <div style="font-size:12px;font-weight:500;color:#4fc3f7;margin-bottom:8px">📺 Samsung TV가 목록에 안 보이나요?</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.8">
+          Samsung 스마트TV(2019년 이후)는 Chromecast Built-in이 내장되어 있습니다.<br>
+          <strong style="color:var(--text)">TV 설정 → 일반 → Apple AirPlay 설정 → Chromecast 활성화</strong><br>
+          또는: <strong style="color:var(--text)">설정 → 연결 → 무선 스크린/AirPlay</strong><br>
+          활성화 후 폰과 TV가 <strong style="color:var(--text)">같은 Wi-Fi</strong>에 연결되면 자동 탐색됩니다.
+        </div>
+      </div>
     </div>
       <div class="settings-row">
         <div><div class="settings-label">현재 플랜</div><div class="settings-desc" id="currentPlan">무료 플랜 — 100개 작품 이용 가능</div></div>
@@ -1001,6 +1003,18 @@
         </svg>
         Apple
       </button>
+      <button class="social-btn github" onclick="socialLogin('GitHub')">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+        </svg>
+        GitHub
+      </button>
+      <button class="social-btn facebook" onclick="socialLogin('Facebook')">
+        <svg viewBox="0 0 24 24" fill="#1877F2">
+          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+        </svg>
+        Facebook
+      </button>
       <button class="social-btn kakao" onclick="socialLogin('Kakao')">
         <svg viewBox="0 0 24 24" fill="#3c1e1e">
           <path d="M12 3C6.48 3 2 6.48 2 10.8c0 2.73 1.73 5.13 4.36 6.56l-1.1 4.05c-.1.36.3.64.6.42L10.5 19c.49.07.99.1 1.5.1 5.52 0 10-3.48 10-7.8S17.52 3 12 3z"/>
@@ -1015,7 +1029,11 @@
       </button>
     </div>
     <div class="modal-divider">간편 로그인</div>
-    <div class="modal-note">별도 회원가입 없이 기존 소셜 계정으로 로그인할 수 있습니다.<br>로그인 시 <u>이용약관</u> 및 <u>개인정보처리방침</u>에 동의하게 됩니다.</div>
+    <div class="modal-note" style="font-size:11px;color:var(--muted);line-height:1.7">
+      ⚠️ 현재 소셜 로그인은 UI 미리보기 상태입니다.<br>
+      실제 연동을 위해서는 각 플랫폼 개발자 콘솔에서 OAuth 앱 등록이 필요합니다.<br>
+      별도 회원가입 없이 기존 소셜 계정으로 로그인할 수 있습니다.
+    </div>
   </div>
 </div>
 
@@ -1212,12 +1230,12 @@ const localArtworks = [
 
   // ── 국립중앙박물관 공공누리 제1유형 (출처표시, 상업적 이용 가능) ──────────────────────
   // 출처: 국립중앙박물관 (museum.go.kr), 공공누리 제1유형
-  { id:110, title:"청자 상감 운학문 매병", titleEn:"Celadon Prunus Vase with Inlaid Crane Design", artist:"작자 미상 (고려)", year:1150, movement:"고려 청자", origin:"고려", premium:false, url:"https://www.museum.go.kr/full-size-image/nfm_img/220002/220002_001.jpg", thumb:"https://www.museum.go.kr/thumbnail/nfm_img/220002/220002_001.jpg", category:"동양화", source:"국립중앙박물관" },
-  { id:111, title:"금동 미륵보살 반가 사유상", titleEn:"Gilt-bronze Maitreya in Meditation", artist:"작자 미상 (삼국)", year:600, movement:"삼국시대 불교 조각", origin:"삼국", premium:false, url:"https://www.museum.go.kr/full-size-image/nfm_img/dc0001433/dc0001433.jpg", thumb:"https://www.museum.go.kr/thumbnail/nfm_img/dc0001433/dc0001433.jpg", category:"동양화", source:"국립중앙박물관" },
-  { id:112, title:"단원 씨름 (풍속화첩)", titleEn:"Ssireum (Wrestling)", artist:"김홍도 (金弘道)", year:1778, movement:"조선 풍속화", origin:"조선", premium:false, url:"https://www.museum.go.kr/full-size-image/nfm_img/800002866/800002866.jpg", thumb:"https://www.museum.go.kr/thumbnail/nfm_img/800002866/800002866.jpg", category:"동양화", source:"국립중앙박물관" },
-  { id:113, title:"신윤복 미인도", titleEn:"Portrait of a Beauty", artist:"신윤복 (申潤福)", year:1800, movement:"조선 풍속화", origin:"조선", premium:false, url:"https://www.museum.go.kr/full-size-image/nfm_img/dc0001071/dc0001071.jpg", thumb:"https://www.museum.go.kr/thumbnail/nfm_img/dc0001071/dc0001071.jpg", category:"동양화", source:"국립중앙박물관" },
-  { id:114, title:"천마도 (천마총 장니)", titleEn:"Cheonmado (Flying Horse)", artist:"작자 미상 (신라)", year:500, movement:"신라 고분 미술", origin:"신라", premium:false, url:"https://www.museum.go.kr/full-size-image/nfm_img/220001/220001_001.jpg", thumb:"https://www.museum.go.kr/thumbnail/nfm_img/220001/220001_001.jpg", category:"동양화", source:"국립중앙박물관" },
-  { id:115, title:"반구대 암각화 (탁본)", titleEn:"Bangudae Petroglyphs Rubbing", artist:"작자 미상 (선사)", year:-5000, movement:"선사 암각화", origin:"한반도", premium:false, url:"https://www.museum.go.kr/full-size-image/nfm_img/dc0006702/dc0006702.jpg", thumb:"https://www.museum.go.kr/thumbnail/nfm_img/dc0006702/dc0006702.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:110, title:"청자 상감 운학문 매병", titleEn:"Celadon Prunus Vase with Inlaid Crane Design", artist:"작자 미상 (고려)", year:1150, movement:"고려 청자", origin:"고려", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Korean_celadon_vase_with_inlaid_crane_design.jpg/800px-Korean_celadon_vase_with_inlaid_crane_design.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Korean_celadon_vase_with_inlaid_crane_design.jpg/400px-Korean_celadon_vase_with_inlaid_crane_design.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:111, title:"금동 미륵보살 반가 사유상", titleEn:"Gilt-bronze Maitreya in Meditation", artist:"작자 미상 (삼국)", year:600, movement:"삼국시대 불교 조각", origin:"삼국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Pensive_bodhisattva_Korea.jpg/600px-Pensive_bodhisattva_Korea.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Pensive_bodhisattva_Korea.jpg/400px-Pensive_bodhisattva_Korea.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:112, title:"단원 씨름 (풍속화첩)", titleEn:"Ssireum (Wrestling)", artist:"김홍도 (金弘道)", year:1778, movement:"조선 풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/9/94/Kim_Hongdo-Ssireum.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Kim_Hongdo-Ssireum.jpg/600px-Kim_Hongdo-Ssireum.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:113, title:"신윤복 미인도", titleEn:"Portrait of a Beauty", artist:"신윤복 (申潤福)", year:1800, movement:"조선 풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/5/5c/Shin_Yun-bok-Portrait_of_a_Beauty.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Shin_Yun-bok-Portrait_of_a_Beauty.jpg/400px-Shin_Yun-bok-Portrait_of_a_Beauty.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:114, title:"천마도 (천마총 장니)", titleEn:"Cheonmado (Flying Horse)", artist:"작자 미상 (신라)", year:500, movement:"신라 고분 미술", origin:"신라", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Heavenly_Horse%2C_Cheonmachong_Tomb.jpg/800px-Heavenly_Horse%2C_Cheonmachong_Tomb.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Heavenly_Horse%2C_Cheonmachong_Tomb.jpg/400px-Heavenly_Horse%2C_Cheonmachong_Tomb.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:115, title:"반구대 암각화 (탁본)", titleEn:"Bangudae Petroglyphs Rubbing", artist:"작자 미상 (선사)", year:-5000, movement:"선사 암각화", origin:"한반도", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Bangudae_petroglyph.jpg/1280px-Bangudae_petroglyph.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Bangudae_petroglyph.jpg/400px-Bangudae_petroglyph.jpg", category:"동양화", source:"국립중앙박물관" },
 ];
 
 // ── 다중 API 소스 설정 ──────────────────────────────────
@@ -1276,16 +1294,23 @@ let selectedPlan = 'year';
 
 // 랜덤 순서 생성
 function buildRandomOrder() {
+  // 전체 작품을 섞어서 한 사이클에 모두 표시
   randomOrder = artworks.map((_, i) => i);
+  // Fisher-Yates 셔플
   for (let i = randomOrder.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [randomOrder[i], randomOrder[j]] = [randomOrder[j], randomOrder[i]];
   }
   randomPos = 0;
+  console.log(`[셔플] ${randomOrder.length}개 작품 새 순서 생성`);
 }
 
 function nextRandomIndex() {
-  if (randomPos >= randomOrder.length) buildRandomOrder();
+  // 한 사이클 완료 시 새로 섞어서 재시작 (모든 작품 균등 노출)
+  if (randomPos >= randomOrder.length) {
+    buildRandomOrder();
+    console.log('[셔플] 전체 사이클 완료 → 새 순서로 재시작');
+  }
   return randomOrder[randomPos++];
 }
 
@@ -1542,37 +1567,52 @@ function initApp() {
 // ── ARTWORK DISPLAY (비율 유지 + 외곽 색상 블러 배경) ──
 
 // 이미지 로드 검증 + 실패 시 다음 작품으로 자동 skip
+// ── 이미지 로딩 유틸리티 ──────────────────────────────────────────
+let _loadDepth = 0;
+let _isLoading = false; // 동시 로딩 방지 플래그
+
 function preloadImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.referrerPolicy = 'no-referrer';
-    img.crossOrigin = 'anonymous';
-    img.onload  = () => resolve(url);
-    img.onerror = () => reject(url);
+    const t = setTimeout(() => reject(new Error('timeout')), 12000);
+    img.onload  = () => { clearTimeout(t); resolve(url); };
+    img.onerror = () => { clearTimeout(t); reject(new Error('load_error')); };
     img.src = url;
-    setTimeout(() => reject(url), 8000);
   });
 }
 
 function loadArtwork(idx, animate = true) {
+  if (_isLoading) return; // 중복 호출 방지
   const art = artworks[idx];
   if (!art) return;
 
+  _isLoading = true;
   const bgBlur = document.getElementById('bg-blur');
   const bgImg  = document.getElementById('bg-image');
 
-  // 이미지 로드 시도 → 실패 시 다음 작품으로 skip
+  // 이미지 완전 로드 후 fade-in (깨진 이미지 방지)
   preloadImage(art.url)
     .then(url => {
+      _loadDepth = 0;
+      _isLoading = false;
+
       if (animate) {
+        // 1) 현재 이미지 fade out
+        bgBlur.style.transition = 'opacity 0.35s ease';
+        bgImg.style.transition  = 'opacity 0.35s ease';
         bgBlur.style.opacity = 0;
         bgImg.style.opacity  = 0;
         setTimeout(() => {
+          // 2) 새 이미지 세팅
           bgBlur.style.backgroundImage = `url(${url})`;
           bgImg.style.backgroundImage  = `url(${url})`;
+          // 3) fade in
+          bgBlur.style.transition = 'opacity 1.0s ease';
+          bgImg.style.transition  = 'opacity 1.0s ease';
           bgBlur.style.opacity = 1;
           bgImg.style.opacity  = 1;
-        }, 500);
+        }, 370);
       } else {
         bgBlur.style.backgroundImage = `url(${url})`;
         bgImg.style.backgroundImage  = `url(${url})`;
@@ -1580,28 +1620,35 @@ function loadArtwork(idx, animate = true) {
         bgImg.style.opacity  = 1;
       }
 
-      // 작품 정보 업데이트 (이미지 로드 성공 시에만)
+      // 작품 정보 업데이트
+      document.getElementById('artTitle').textContent  = art.title;
+      document.getElementById('artArtist').textContent = art.artist;
+      document.getElementById('artMeta').textContent   =
+        `${art.year > 0 ? art.year : '연도미상'} · ${art.movement} · ${art.origin}`;
+      const badge = document.getElementById('artBadge');
+      badge.textContent = '✦ FREE';
+      badge.className   = 'artwork-badge free';
       const info = document.getElementById('artworkInfo');
       info.style.animation = 'none';
       info.offsetHeight;
       info.style.animation = 'slideUp 0.8s ease forwards';
-      document.getElementById('artTitle').textContent  = art.title;
-      document.getElementById('artArtist').textContent = art.artist;
-      document.getElementById('artMeta').textContent   = `${art.year > 0 ? art.year : '연도미상'} · ${art.movement} · ${art.origin}`;
-      if (art.source) document.getElementById('artMeta').textContent += ` · ${art.source}`;
-      const badge = document.getElementById('artBadge');
-      badge.textContent = '✦ FREE';
-      badge.className   = 'artwork-badge free';
-      // 다음 작품 미리 로딩
+
       if (metArtworkCache.length + aicArtworkCache.length + clevelandArtworkCache.length < 15) {
         prefetchAllSources(1);
       }
     })
-    .catch(() => {
-      console.info(`이미지 로드 실패, 다음 작품으로 이동: ${art.title}`);
+    .catch((err) => {
+      _isLoading = false;
+      _loadDepth++;
+      console.warn(`[이미지 실패 ${_loadDepth}] ${art.title} — ${err.message}`);
+      if (_loadDepth >= 10) {
+        _loadDepth = 0;
+        showToast('이미지를 불러올 수 없습니다.', '');
+        return;
+      }
       const next = isShuffleMode ? nextRandomIndex() : (sequentialIndex + 1) % artworks.length;
       currentIndex = next;
-      loadArtwork(currentIndex, animate);
+      setTimeout(() => loadArtwork(currentIndex, animate), 300);
     });
 }
 
@@ -1731,12 +1778,10 @@ function validateThumbs(artList) {
     if (!el) return;
     const img = new Image();
     img.referrerPolicy = 'no-referrer';
-    img.crossOrigin = 'anonymous';
     img.onload = () => {};
     img.onerror = () => {
       const fallbackImg = new Image();
       fallbackImg.referrerPolicy = 'no-referrer';
-      fallbackImg.crossOrigin = 'anonymous';
       fallbackImg.onload = () => {
         if (el) el.style.backgroundImage = `url(${art.url})`;
       };
@@ -1945,12 +1990,7 @@ document.addEventListener('keydown', (e) => {
 // ── CHROMECAST ──
 let castState = { active: false, device: null, sessionId: null };
 
-// Google Cast API 초기화
-window['__onGCastApiAvailable'] = function(isAvailable) {
-  if (isAvailable) {
-    initCastApi();
-  }
-};
+// __onGCastApiAvailable 는 <head>에 선언됨 (SDK 로드 전 필수)
 
 function initCastApi() {
   const GALERIE_APP_ID = '83B532DF'; // Google Cast SDK App ID (cast.google.com 등록)
@@ -2001,24 +2041,13 @@ function initCastApi() {
 
 function openDonation(platform) {
   const urls = {
-    kofi:  'https://ko-fi.com/',         // ← ko-fi.com/계정명 으로 교체하세요
-    // 카카오페이 송금: 카카오페이 앱 → 더보기 → 나의 QR → QR 링크 복사 → 아래 교체
-    kakao: 'https://qr.kakaopay.com/',   // ← 본인 카카오페이 QR 링크로 교체 필요
+    kofi:  'https://ko-fi.com/bittory',
+    kakao: 'https://qr.kakaopay.com/Ej9Eq4BRN',
   };
-
-  if (platform === 'kakao') {
-    // 카카오페이 QR 링크가 설정되지 않은 경우 안내
-    const kakaoUrl = urls.kakao;
-    if (kakaoUrl === 'https://qr.kakaopay.com/') {
-      showToast('카카오페이 앱 → 더보기 → 나의 QR에서 링크를 확인하세요', '');
-      return;
-    }
-    window.open(kakaoUrl, '_blank');
-    return;
-  }
-
   const url = urls[platform];
-  if (url) window.open(url, '_blank');
+  if (url) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
 }
 
 function openCastModal() {
