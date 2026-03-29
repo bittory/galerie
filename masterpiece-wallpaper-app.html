@@ -1188,15 +1188,6 @@ const localArtworks = [
   { id:79, title:"그랑 오달리스크", titleEn:"Grande Odalisque", artist:"Jean-Auguste-Dominique Ingres", year:1814, movement:"신고전주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Jean-Auguste-Dominique_Ingres%2C_La_Grande_Odalisque%2C_1814.jpg/1280px-Jean-Auguste-Dominique_Ingres%2C_La_Grande_Odalisque%2C_1814.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Jean-Auguste-Dominique_Ingres%2C_La_Grande_Odalisque%2C_1814.jpg/400px-Jean-Auguste-Dominique_Ingres%2C_La_Grande_Odalisque%2C_1814.jpg", category:"기타" },
 
   // ── 동양화 — 일본 우키요에 (호쿠사이 · 히로시게) ──────
-  { id:80, title:"가나가와 해변의 높은 파도", titleEn:"The Great Wave off Kanagawa", artist:"Katsushika Hokusai", year:1831, movement:"우키요에", origin:"일본", premium:false, url:"https://images.metmuseum.org/CRDImages/as/original/DP251139.jpg", thumb:"https://images.metmuseum.org/CRDImages/as/web-large/DP251139.jpg", category:"동양화" },
-  { id:81, title:"붉은 후지산 (개풍쾌청)", titleEn:"Fine Wind, Clear Morning (Red Fuji)", artist:"Katsushika Hokusai", year:1831, movement:"우키요에", origin:"일본", premium:false, url:"https://images.metmuseum.org/CRDImages/as/original/DP122126.jpg", thumb:"https://images.metmuseum.org/CRDImages/as/web-large/DP122126.jpg", category:"동양화" },
-  { id:82, title:"후지산 36경 — 폭풍 아래", titleEn:"Rainstorm Beneath the Summit", artist:"Katsushika Hokusai", year:1831, movement:"우키요에", origin:"일본", premium:false, url:"https://images.metmuseum.org/CRDImages/as/original/DP251137.jpg", thumb:"https://images.metmuseum.org/CRDImages/as/web-large/DP251137.jpg", category:"동양화" },
-  { id:83, title:"에도 명소 100경 — 가메이도 매화원", titleEn:"Plum Park in Kameido", artist:"Utagawa Hiroshige", year:1857, movement:"우키요에", origin:"일본", premium:false, url:"https://images.metmuseum.org/CRDImages/as/original/DP130155.jpg", thumb:"https://images.metmuseum.org/CRDImages/as/web-large/DP130155.jpg", category:"동양화" },
-  { id:84, title:"오하시 다리의 소나기", titleEn:"Sudden Shower over Shin-Ohashi Bridge", artist:"Utagawa Hiroshige", year:1857, movement:"우키요에", origin:"일본", premium:false, url:"https://images.metmuseum.org/CRDImages/as/original/DP130149.jpg", thumb:"https://images.metmuseum.org/CRDImages/as/web-large/DP130149.jpg", category:"동양화" },
-  { id:85, title:"에도 명소 100경 — 가메이도 등나무", titleEn:"Wisteria at Kameido Tenjin Shrine", artist:"Utagawa Hiroshige", year:1856, movement:"우키요에", origin:"일본", premium:false, url:"https://images.metmuseum.org/CRDImages/as/original/DP130156.jpg", thumb:"https://images.metmuseum.org/CRDImages/as/web-large/DP130156.jpg", category:"동양화" },
-  { id:86, title:"도카이도 53역참 — 카나가와", titleEn:"53 Stations of the Tokaido: Kanagawa", artist:"Utagawa Hiroshige", year:1833, movement:"우키요에", origin:"일본", premium:false, url:"https://images.metmuseum.org/CRDImages/as/original/DP122029.jpg", thumb:"https://images.metmuseum.org/CRDImages/as/web-large/DP122029.jpg", category:"동양화" },
-  { id:87, title:"도카이도 53역참 — 카마바라 야설", titleEn:"Kambara: Night Snow", artist:"Utagawa Hiroshige", year:1833, movement:"우키요에", origin:"일본", premium:false, url:"https://images.metmuseum.org/CRDImages/as/original/DP122059.jpg", thumb:"https://images.metmuseum.org/CRDImages/as/web-large/DP122059.jpg", category:"동양화" },
-  { id:88, title:"호쿠사이 — 아미다 폭포", titleEn:"Kirifuri Waterfall at Kurokami Mountain", artist:"Katsushika Hokusai", year:1833, movement:"우키요에", origin:"일본", premium:false, url:"https://images.metmuseum.org/CRDImages/as/original/DP251163.jpg", thumb:"https://images.metmuseum.org/CRDImages/as/web-large/DP251163.jpg", category:"동양화" },
 
   // ── 동양화 — 조선 회화 ───────────────────────────────
   { id:89, title:"인왕제색도", titleEn:"Clearing after Rain on Mt. Inwang", artist:"정선 (鄭敾)", year:1751, movement:"진경산수화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg/1280px-Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg/600px-Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg", category:"동양화" },
@@ -1594,6 +1585,34 @@ function initApp() {
 let _loadDepth = 0;
 let _isLoading = false; // 동시 로딩 방지 플래그
 
+// 4K UHD 최대 해상도 제한 — 초과 시 Canvas로 다운스케일
+const MAX_W = 3840, MAX_H = 2160;
+
+function limitTo4K(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.onload = () => {
+      // 4K 이하면 그대로 사용
+      if (img.naturalWidth <= MAX_W && img.naturalHeight <= MAX_H) {
+        resolve(url);
+        return;
+      }
+      // 4K 초과 시 Canvas로 다운스케일
+      const ratio = Math.min(MAX_W / img.naturalWidth, MAX_H / img.naturalHeight);
+      const w = Math.round(img.naturalWidth  * ratio);
+      const h = Math.round(img.naturalHeight * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      console.log(`[4K] 다운스케일: ${img.naturalWidth}×${img.naturalHeight} → ${w}×${h}`);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = () => resolve(url); // 실패 시 원본 그대로
+    img.src = url;
+  });
+}
+
 function preloadImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -1616,6 +1635,7 @@ function loadArtwork(idx, animate = true) {
 
   // 이미지 완전 로드 후 fade-in (깨진 이미지 방지)
   preloadImage(art.url)
+    .then(url => limitTo4K(url))
     .then(url => {
       _loadDepth = 0;
       _isLoading = false;
