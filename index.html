@@ -20,6 +20,46 @@ window['__onGCastApiAvailable'] = function(isAvailable) {
 };
 </script>
 <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+
+<!-- Firebase SDK (compat 버전 — 설정 후 아래 config 교체 필요) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Firebase 설정 — Firebase Console에서 발급받은 값으로 교체하세요
+// console.firebase.google.com → 프로젝트 설정 → 웹 앱 추가
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const FIREBASE_CONFIG = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID",
+};
+
+// Kakao SDK 설정 — developers.kakao.com에서 발급
+const KAKAO_JS_KEY      = "YOUR_KAKAO_JAVASCRIPT_KEY";
+const KAKAO_REDIRECT_URI = "https://bittory.github.io/galerie/";
+
+// Naver OAuth 설정 — developers.naver.com에서 발급
+const NAVER_CLIENT_ID   = "YOUR_NAVER_CLIENT_ID";
+const NAVER_REDIRECT_URI = "https://bittory.github.io/galerie/";
+const NAVER_STATE       = Math.random().toString(36).substring(2);
+
+// Firebase Functions 엔드포인트
+const FUNCTIONS_BASE = "https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net";
+
+// Firebase 초기화
+let firebaseApp = null, firebaseAuth = null;
+try {
+  firebaseApp  = firebase.initializeApp(FIREBASE_CONFIG);
+  firebaseAuth = firebase.auth();
+  console.log('[Firebase] 초기화 완료');
+} catch(e) {
+  console.warn('[Firebase] 초기화 실패 — config 설정 필요:', e.message);
+}
+</script>
 <style>
   :root {
     /* ── 시스템 폰트 스택 ──
@@ -395,8 +435,6 @@ window['__onGCastApiAvailable'] = function(isAvailable) {
   .social-btn.facebook { border-color: rgba(24,119,242,0.4); }
   .social-btn.facebook:hover { background: rgba(24,119,242,0.1); border-color: #1877F2; }
 
-  .social-btn.apple { border-color: rgba(255,255,255,0.2); }
-  .social-btn.apple:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.5); }
 
   .social-btn.kakao {
     background: #fee500; border-color: #fee500; color: #3c1e1e;
@@ -982,57 +1020,119 @@ window['__onGCastApiAvailable'] = function(isAvailable) {
 </div>
 
 <!-- LOGIN MODAL -->
+<!-- ━━━ LOGIN MODAL ━━━ -->
 <div class="modal-overlay" id="loginModal">
-  <div class="modal">
+  <div class="modal" style="max-width:420px">
     <button class="modal-close" onclick="closeModal('loginModal')">×</button>
-    <div class="modal-title">SIGN IN</div>
-    <div class="modal-subtitle">간편하게 로그인하고 모든 작품을 감상하세요</div>
-    <div class="social-login-grid">
-      <button class="social-btn google" onclick="socialLogin('Google')">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-        </svg>
-        Google
+
+    <!-- VIEW: 소셜 로그인 선택 -->
+    <div id="loginView-social">
+      <div class="modal-title">SIGN IN</div>
+      <div class="modal-subtitle" style="margin-bottom:24px">명화 컬렉션을 감상하세요</div>
+
+      <!-- 소셜 버튼 -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="social-btn google" onclick="loginWithGoogle()" style="width:100%;justify-content:center;gap:10px">
+          <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          Google로 계속하기
+        </button>
+        <button class="social-btn facebook" onclick="loginWithFacebook()" style="width:100%;justify-content:center;gap:10px">
+          <svg viewBox="0 0 24 24" fill="#1877F2" width="18" height="18"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          Facebook으로 계속하기
+        </button>
+        <button class="social-btn kakao" onclick="loginWithKakao()" style="width:100%;justify-content:center;gap:10px">
+          <svg viewBox="0 0 24 24" fill="#3c1e1e" width="18" height="18"><path d="M12 3C6.48 3 2 6.48 2 10.8c0 2.73 1.73 5.13 4.36 6.56l-1.1 4.05c-.1.36.3.64.6.42L10.5 19c.49.07.99.1 1.5.1 5.52 0 10-3.48 10-7.8S17.52 3 12 3z"/></svg>
+          카카오로 계속하기
+        </button>
+        <button class="social-btn naver" onclick="loginWithNaver()" style="width:100%;justify-content:center;gap:10px">
+          <svg viewBox="0 0 24 24" fill="white" width="18" height="18"><path d="M16.273 12.845L7.376 0H0v24h7.727V11.155L16.624 24H24V0h-7.727z"/></svg>
+          네이버로 계속하기
+        </button>
+        <button class="social-btn github" onclick="loginWithGitHub()" style="width:100%;justify-content:center;gap:10px">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
+          GitHub으로 계속하기
+        </button>
+      </div>
+
+      <div class="modal-divider" style="margin:20px 0">또는</div>
+
+      <!-- 이메일 로그인 버튼 -->
+      <button onclick="showLoginView('email')" style="width:100%;padding:12px;border-radius:12px;border:0.5px solid var(--border);background:transparent;color:var(--text);font-size:13px;cursor:pointer;transition:all .2s">
+        📧 이메일로 로그인
       </button>
-      <button class="social-btn apple" onclick="socialLogin('Apple')">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-        </svg>
-        Apple
-      </button>
-      <button class="social-btn github" onclick="socialLogin('GitHub')">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-        </svg>
-        GitHub
-      </button>
-      <button class="social-btn facebook" onclick="socialLogin('Facebook')">
-        <svg viewBox="0 0 24 24" fill="#1877F2">
-          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-        </svg>
-        Facebook
-      </button>
-      <button class="social-btn kakao" onclick="socialLogin('Kakao')">
-        <svg viewBox="0 0 24 24" fill="#3c1e1e">
-          <path d="M12 3C6.48 3 2 6.48 2 10.8c0 2.73 1.73 5.13 4.36 6.56l-1.1 4.05c-.1.36.3.64.6.42L10.5 19c.49.07.99.1 1.5.1 5.52 0 10-3.48 10-7.8S17.52 3 12 3z"/>
-        </svg>
-        카카오
-      </button>
-      <button class="social-btn naver" onclick="socialLogin('Naver')">
-        <svg viewBox="0 0 24 24" fill="white">
-          <path d="M16.273 12.845L7.376 0H0v24h7.727V11.155L16.624 24H24V0h-7.727z"/>
-        </svg>
-        네이버
-      </button>
+      <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--muted)">
+        계정이 없으신가요?
+        <span onclick="showLoginView('register')" style="color:var(--gold);cursor:pointer;margin-left:4px">회원가입</span>
+      </div>
     </div>
-    <div class="modal-divider">간편 로그인</div>
-    <div class="modal-note" style="font-size:11px;color:var(--muted);line-height:1.7">
-      ⚠️ 현재 소셜 로그인은 UI 미리보기 상태입니다.<br>
-      실제 연동을 위해서는 각 플랫폼 개발자 콘솔에서 OAuth 앱 등록이 필요합니다.<br>
-      별도 회원가입 없이 기존 소셜 계정으로 로그인할 수 있습니다.
+
+    <!-- VIEW: 이메일 로그인 -->
+    <div id="loginView-email" style="display:none">
+      <button onclick="showLoginView('social')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;margin-bottom:16px;padding:0">← 돌아가기</button>
+      <div class="modal-title" style="font-size:18px;margin-bottom:20px">이메일 로그인</div>
+      <div id="loginError" style="display:none;padding:10px 14px;border-radius:10px;background:rgba(226,75,74,.1);border:0.5px solid rgba(226,75,74,.3);color:#f09595;font-size:12px;margin-bottom:14px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <input id="loginEmail" type="email" placeholder="이메일 주소" style="padding:12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+        <div style="position:relative">
+          <input id="loginPassword" type="password" placeholder="비밀번호" style="width:100%;padding:12px 44px 12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+          <span onclick="togglePwVis('loginPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:16px;color:var(--muted)">👁</span>
+        </div>
+        <button onclick="loginWithEmail()" id="emailLoginBtn" style="padding:13px;border-radius:12px;background:var(--gold);border:none;color:#0d0c09;font-size:14px;font-weight:500;cursor:pointer;transition:opacity .2s">
+          로그인
+        </button>
+      </div>
+      <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--muted)">
+        <span onclick="showLoginView('reset')" style="color:var(--gold);cursor:pointer">비밀번호를 잊으셨나요?</span>
+        &nbsp;·&nbsp;
+        <span onclick="showLoginView('register')" style="color:var(--gold);cursor:pointer">회원가입</span>
+      </div>
+    </div>
+
+    <!-- VIEW: 회원가입 -->
+    <div id="loginView-register" style="display:none">
+      <button onclick="showLoginView('social')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;margin-bottom:16px;padding:0">← 돌아가기</button>
+      <div class="modal-title" style="font-size:18px;margin-bottom:20px">회원가입</div>
+      <div id="registerError" style="display:none;padding:10px 14px;border-radius:10px;background:rgba(226,75,74,.1);border:0.5px solid rgba(226,75,74,.3);color:#f09595;font-size:12px;margin-bottom:14px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <input id="regName" type="text" placeholder="이름 (닉네임)" style="padding:12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+        <input id="regEmail" type="email" placeholder="이메일 주소" style="padding:12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+        <div style="position:relative">
+          <input id="regPassword" type="password" placeholder="비밀번호 (6자 이상)" style="width:100%;padding:12px 44px 12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+          <span onclick="togglePwVis('regPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:16px;color:var(--muted)">👁</span>
+        </div>
+        <input id="regPasswordConfirm" type="password" placeholder="비밀번호 확인" style="padding:12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+        <button onclick="registerWithEmail()" style="padding:13px;border-radius:12px;background:var(--gold);border:none;color:#0d0c09;font-size:14px;font-weight:500;cursor:pointer">
+          가입하기
+        </button>
+      </div>
+      <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--muted)">
+        이미 계정이 있으신가요?
+        <span onclick="showLoginView('email')" style="color:var(--gold);cursor:pointer;margin-left:4px">로그인</span>
+      </div>
+    </div>
+
+    <!-- VIEW: 비밀번호 재설정 -->
+    <div id="loginView-reset" style="display:none">
+      <button onclick="showLoginView('email')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;margin-bottom:16px;padding:0">← 돌아가기</button>
+      <div class="modal-title" style="font-size:18px;margin-bottom:8px">비밀번호 재설정</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.6">가입한 이메일을 입력하면 재설정 링크를 보내드립니다.</div>
+      <div id="resetMsg" style="display:none;padding:10px 14px;border-radius:10px;background:rgba(29,158,117,.1);border:0.5px solid rgba(29,158,117,.3);color:#5dcaa5;font-size:12px;margin-bottom:14px"></div>
+      <div id="resetError" style="display:none;padding:10px 14px;border-radius:10px;background:rgba(226,75,74,.1);border:0.5px solid rgba(226,75,74,.3);color:#f09595;font-size:12px;margin-bottom:14px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <input id="resetEmail" type="email" placeholder="가입한 이메일 주소" style="padding:12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+        <button onclick="sendPasswordReset()" style="padding:13px;border-radius:12px;background:var(--gold);border:none;color:#0d0c09;font-size:14px;font-weight:500;cursor:pointer">
+          재설정 링크 보내기
+        </button>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;font-size:11px;color:var(--muted);text-align:center;line-height:1.7">
+      로그인 시 <u style="cursor:pointer">이용약관</u> 및 <u style="cursor:pointer">개인정보처리방침</u>에 동의합니다.
     </div>
   </div>
 </div>
@@ -1881,30 +1981,311 @@ function showPage(page) {
 
 // ── LOGIN ──
 function openLoginModal() {
-  if (isLoggedIn) {
-    isLoggedIn = false; isPremium = false;
-    document.getElementById('login-btn').textContent = '로그인';
-    document.getElementById('login-btn').classList.remove('logged-in');
-    document.getElementById('userAvatar').classList.remove('show');
-    renderGallery();
-    showToast('로그아웃되었습니다', '');
-    return;
-  }
+  if (isLoggedIn) { doLogout(); return; }
+  showLoginView('social');
   document.getElementById('loginModal').classList.add('active');
 }
 
-function socialLogin(provider) {
-  closeModal('loginModal');
-  setTimeout(() => {
-    isLoggedIn = true;
-    const btn = document.getElementById('login-btn');
-    btn.textContent = '로그아웃';
-    btn.classList.add('logged-in');
-    document.getElementById('userAvatar').classList.add('show');
-    showToast(`${provider} 로그인 성공`, 'success');
-    renderGallery();
-  }, 800);
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// LOGIN SYSTEM — Firebase Auth 실제 연동
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ── 로그인 뷰 전환 ─────────────────────────────────────────────────
+function showLoginView(view) {
+  ['social','email','register','reset'].forEach(v => {
+    const el = document.getElementById(`loginView-${v}`);
+    if (el) el.style.display = v === view ? 'block' : 'none';
+  });
+  // 에러 초기화
+  ['loginError','registerError','resetError','resetMsg'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
 }
+
+// ── 비밀번호 표시/숨김 ─────────────────────────────────────────────
+function togglePwVis(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+  else { input.type = 'password'; btn.textContent = '👁'; }
+}
+
+// ── Firebase 에러 메시지 한국어 변환 ──────────────────────────────
+function firebaseErrMsg(code) {
+  const map = {
+    'auth/invalid-email':           '이메일 형식이 올바르지 않습니다.',
+    'auth/user-not-found':          '등록되지 않은 이메일입니다.',
+    'auth/wrong-password':          '비밀번호가 틀렸습니다.',
+    'auth/email-already-in-use':    '이미 사용 중인 이메일입니다.',
+    'auth/weak-password':           '비밀번호는 6자 이상이어야 합니다.',
+    'auth/too-many-requests':       '잠시 후 다시 시도해주세요.',
+    'auth/popup-closed-by-user':    '로그인 창이 닫혔습니다.',
+    'auth/cancelled-popup-request': '로그인이 취소되었습니다.',
+    'auth/network-request-failed':  '네트워크 연결을 확인해주세요.',
+    'auth/invalid-credential':      '이메일 또는 비밀번호가 올바르지 않습니다.',
+  };
+  return map[code] || '로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
+}
+
+// ── 로그인 성공 공통 처리 ─────────────────────────────────────────
+function onLoginSuccess(user) {
+  isLoggedIn = true;
+  closeModal('loginModal');
+  const btn = document.getElementById('login-btn');
+  btn.textContent = '로그아웃';
+  btn.classList.add('logged-in');
+  document.getElementById('userAvatar').classList.add('show');
+  const name = user.displayName || user.email?.split('@')[0] || '사용자';
+  showToast(`${name}님, 환영합니다 ✦`, 'success');
+  renderGallery();
+}
+
+// ── 로그아웃 ─────────────────────────────────────────────────────
+function doLogout() {
+  if (firebaseAuth) {
+    firebaseAuth.signOut().catch(e => console.warn('[logout]', e));
+  }
+  isLoggedIn = false; isPremium = false;
+  const btn = document.getElementById('login-btn');
+  btn.textContent = '로그인';
+  btn.classList.remove('logged-in');
+  document.getElementById('userAvatar').classList.remove('show');
+  renderGallery();
+  showToast('로그아웃되었습니다', '');
+}
+
+// ── Firebase Auth 상태 리스너 ─────────────────────────────────────
+if (firebaseAuth) {
+  firebaseAuth.onAuthStateChanged(user => {
+    if (user && !isLoggedIn) {
+      isLoggedIn = true;
+      document.getElementById('login-btn').textContent = '로그아웃';
+      document.getElementById('login-btn').classList.add('logged-in');
+      document.getElementById('userAvatar').classList.add('show');
+    }
+  });
+}
+
+// ── Google 로그인 (Firebase Popup) ───────────────────────────────
+async function loginWithGoogle() {
+  if (!firebaseAuth) { showToast('Firebase 설정이 필요합니다.', ''); return; }
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const result = await firebaseAuth.signInWithPopup(provider);
+    onLoginSuccess(result.user);
+  } catch (e) {
+    console.error('[Google login]', e);
+    showToast(firebaseErrMsg(e.code), '');
+  }
+}
+
+// ── Facebook 로그인 (Firebase Popup) ─────────────────────────────
+async function loginWithFacebook() {
+  if (!firebaseAuth) { showToast('Firebase 설정이 필요합니다.', ''); return; }
+  try {
+    const provider = new firebase.auth.FacebookAuthProvider();
+    provider.addScope('email');
+    const result = await firebaseAuth.signInWithPopup(provider);
+    onLoginSuccess(result.user);
+  } catch (e) {
+    console.error('[Facebook login]', e);
+    showToast(firebaseErrMsg(e.code), '');
+  }
+}
+
+// ── GitHub 로그인 (Firebase Popup) ────────────────────────────────
+async function loginWithGitHub() {
+  if (!firebaseAuth) { showToast('Firebase 설정이 필요합니다.', ''); return; }
+  try {
+    const provider = new firebase.auth.GithubAuthProvider();
+    provider.addScope('user:email');
+    const result = await firebaseAuth.signInWithPopup(provider);
+    onLoginSuccess(result.user);
+  } catch (e) {
+    console.error('[GitHub login]', e);
+    showToast(firebaseErrMsg(e.code), '');
+  }
+}
+
+// ── 카카오 로그인 (Redirect 방식) ─────────────────────────────────
+function loginWithKakao() {
+  // 카카오 JS SDK 사용 가능 여부 확인
+  if (typeof Kakao !== 'undefined' && Kakao.isInitialized()) {
+    // 방법 A: Kakao JS SDK Redirect
+    Kakao.Auth.authorize({
+      redirectUri: KAKAO_REDIRECT_URI,
+      state: 'kakao_login',
+      prompt: 'login',
+    });
+  } else {
+    // 방법 B: 직접 OAuth URL 생성 (JS SDK 없이)
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id:     KAKAO_JS_KEY,
+      redirect_uri:  KAKAO_REDIRECT_URI,
+      state:         'kakao_login',
+      scope:         'profile_nickname,profile_image,account_email',
+    });
+    window.location.href = `https://kauth.kakao.com/oauth/authorize?${params}`;
+  }
+}
+
+// ── 네이버 로그인 (Redirect 방식) ────────────────────────────────
+function loginWithNaver() {
+  sessionStorage.setItem('naver_state', NAVER_STATE);
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id:     NAVER_CLIENT_ID,
+    redirect_uri:  NAVER_REDIRECT_URI,
+    state:         NAVER_STATE,
+  });
+  window.location.href = `https://nid.naver.com/oauth2.0/authorize?${params}`;
+}
+
+// ── OAuth Callback 처리 (페이지 로드 시 URL 파라미터 확인) ──────────
+async function handleOAuthCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code    = params.get('code');
+  const state   = params.get('state');
+  const error   = params.get('error');
+
+  if (!code) return;
+
+  // 에러 처리
+  if (error) {
+    showToast('로그인이 취소되었습니다.', '');
+    window.history.replaceState({}, '', window.location.pathname);
+    return;
+  }
+
+  showToast('로그인 처리 중...', '');
+
+  try {
+    let endpoint = '';
+    if (state === 'kakao_login') {
+      endpoint = `${FUNCTIONS_BASE}/kakaoAuth?code=${code}`;
+    } else if (state === sessionStorage.getItem('naver_state')) {
+      endpoint = `${FUNCTIONS_BASE}/naverAuth?code=${code}&state=${state}`;
+      sessionStorage.removeItem('naver_state');
+    } else {
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
+    }
+
+    const res  = await fetch(endpoint);
+    const data = await res.json();
+
+    if (!res.ok || !data.token) {
+      throw new Error(data.message || '토큰 발급 실패');
+    }
+
+    // Firebase 커스텀 토큰으로 로그인
+    if (firebaseAuth) {
+      const result = await firebaseAuth.signInWithCustomToken(data.token);
+      onLoginSuccess(result.user);
+    } else {
+      // Firebase 미설정 시 임시 처리
+      isLoggedIn = true;
+      onLoginSuccess({ displayName: data.displayName, email: data.email });
+    }
+
+    // URL 파라미터 제거
+    window.history.replaceState({}, '', window.location.pathname);
+
+  } catch (e) {
+    console.error('[OAuth callback]', e);
+    showToast(`로그인 오류: ${e.message}`, '');
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+}
+
+// ── 이메일 로그인 ─────────────────────────────────────────────────
+async function loginWithEmail() {
+  if (!firebaseAuth) { showLoginError('loginError', 'Firebase 설정이 필요합니다.'); return; }
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw    = document.getElementById('loginPassword').value;
+  if (!email || !pw) { showLoginError('loginError', '이메일과 비밀번호를 입력해주세요.'); return; }
+
+  const btn = document.getElementById('emailLoginBtn');
+  btn.textContent = '로그인 중...'; btn.disabled = true;
+
+  try {
+    const result = await firebaseAuth.signInWithEmailAndPassword(email, pw);
+    onLoginSuccess(result.user);
+  } catch (e) {
+    showLoginError('loginError', firebaseErrMsg(e.code));
+  } finally {
+    btn.textContent = '로그인'; btn.disabled = false;
+  }
+}
+
+// ── 이메일 회원가입 ───────────────────────────────────────────────
+async function registerWithEmail() {
+  if (!firebaseAuth) { showLoginError('registerError', 'Firebase 설정이 필요합니다.'); return; }
+  const name    = document.getElementById('regName').value.trim();
+  const email   = document.getElementById('regEmail').value.trim();
+  const pw      = document.getElementById('regPassword').value;
+  const pwConf  = document.getElementById('regPasswordConfirm').value;
+
+  if (!name || !email || !pw) { showLoginError('registerError', '모든 항목을 입력해주세요.'); return; }
+  if (pw !== pwConf)          { showLoginError('registerError', '비밀번호가 일치하지 않습니다.'); return; }
+  if (pw.length < 6)          { showLoginError('registerError', '비밀번호는 6자 이상이어야 합니다.'); return; }
+
+  try {
+    const result = await firebaseAuth.createUserWithEmailAndPassword(email, pw);
+    await result.user.updateProfile({ displayName: name });
+    onLoginSuccess(result.user);
+  } catch (e) {
+    showLoginError('registerError', firebaseErrMsg(e.code));
+  }
+}
+
+// ── 비밀번호 재설정 ───────────────────────────────────────────────
+async function sendPasswordReset() {
+  if (!firebaseAuth) { showLoginError('resetError', 'Firebase 설정이 필요합니다.'); return; }
+  const email = document.getElementById('resetEmail').value.trim();
+  if (!email) { showLoginError('resetError', '이메일을 입력해주세요.'); return; }
+
+  try {
+    await firebaseAuth.sendPasswordResetEmail(email);
+    const msg = document.getElementById('resetMsg');
+    msg.textContent = `${email}로 재설정 링크를 보냈습니다.`;
+    msg.style.display = 'block';
+    document.getElementById('resetError').style.display = 'none';
+  } catch (e) {
+    showLoginError('resetError', firebaseErrMsg(e.code));
+  }
+}
+
+// ── 에러 메시지 표시 헬퍼 ─────────────────────────────────────────
+function showLoginError(elId, msg) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ── Enter 키 로그인 지원 ──────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  handleOAuthCallback(); // OAuth 리다이렉트 처리
+
+  // Kakao JS SDK 초기화 (SDK가 로드된 경우)
+  if (typeof Kakao !== 'undefined') {
+    Kakao.init(KAKAO_JS_KEY);
+    console.log('[Kakao SDK] 초기화 완료');
+  }
+
+  ['loginPassword', 'loginEmail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') loginWithEmail(); });
+  });
+  ['regPasswordConfirm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') registerWithEmail(); });
+  });
+});
 
 // ── PAYMENT ──
 function openPaymentModal() {
