@@ -194,11 +194,6 @@ try {
   .artwork-info {
     max-width: 600px;
     animation: slideUp 0.8s ease forwards;
-    padding: 18px 22px;
-    background: linear-gradient(135deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.15) 80%, transparent 100%);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border-radius: 4px;
   }
   @keyframes slideUp {
     from { opacity: 0; transform: translateY(30px); }
@@ -860,8 +855,8 @@ try {
     <div class="wallpaper-hero">
       <!-- 상단 브랜딩 오버레이: 이미지 로딩 후 표시 → 3초 후 fade out -->
       <div id="heroBrand" style="
-        position:absolute; top:32px; left:50%; transform:translateX(-50%);
-        text-align:center; z-index:20; pointer-events:none;
+        position:absolute; top:32px; right:40px;
+        text-align:right; z-index:20; pointer-events:none;
         opacity:0; transition:opacity 0.8s ease;
       ">
         <div style="
