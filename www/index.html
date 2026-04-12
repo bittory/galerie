@@ -1,0 +1,2650 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- no-referrer: Wikimedia Hotlink 차단 방지. Cast SDK는 head 콜백에서 별도 처리 -->
+<meta name="referrer" content="no-referrer">
+<title>Galerie — 세계 명화 배경화면</title>
+
+<!-- Google Cast SDK: __onGCastApiAvailable 반드시 SDK 로드 전에 선언 -->
+<script>
+window['__onGCastApiAvailable'] = function(isAvailable) {
+  console.log('[Cast] API available:', isAvailable);
+  if (isAvailable) {
+    initCastApi();
+  } else {
+    console.warn('[Cast] API not available');
+  }
+};
+</script>
+<script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+
+<!-- Firebase SDK (compat 버전 — 설정 후 아래 config 교체 필요) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Firebase 설정 — Firebase Console에서 발급받은 값으로 교체하세요
+// console.firebase.google.com → 프로젝트 설정 → 웹 앱 추가
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const FIREBASE_CONFIG = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID",
+};
+
+// Kakao SDK 설정 — developers.kakao.com에서 발급
+const KAKAO_JS_KEY      = "YOUR_KAKAO_JAVASCRIPT_KEY";
+const KAKAO_REDIRECT_URI = "https://bittory.github.io/galerie/";
+
+// Naver OAuth 설정 — developers.naver.com에서 발급
+const NAVER_CLIENT_ID   = "YOUR_NAVER_CLIENT_ID";
+const NAVER_REDIRECT_URI = "https://bittory.github.io/galerie/";
+const NAVER_STATE       = Math.random().toString(36).substring(2);
+
+// Firebase Functions 엔드포인트
+const FUNCTIONS_BASE = "https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net";
+
+// Firebase 초기화
+let firebaseApp = null, firebaseAuth = null;
+try {
+  firebaseApp  = firebase.initializeApp(FIREBASE_CONFIG);
+  firebaseAuth = firebase.auth();
+  console.log('[Firebase] 초기화 완료');
+} catch(e) {
+  console.warn('[Firebase] 초기화 실패 — config 설정 필요:', e.message);
+}
+</script>
+<style>
+  :root {
+    /* ── 시스템 폰트 스택 ──
+     * Android : Noto Sans / Roboto (기기 기본)
+     * iOS/macOS: San Francisco (-apple-system)
+     * Windows  : Segoe UI
+     * fallback : sans-serif
+     */
+    --font-ui:    'Malgun Gothic', '맑은 고딕', sans-serif;
+    --font-title: 'Malgun Gothic', '맑은 고딕', sans-serif;
+    --font-mono:  'Malgun Gothic', '맑은 고딕', monospace;
+
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --dark: #0a0a0f;
+    --deep: #12121a;
+    --panel: rgba(10,10,15,0.92);
+    --text: #f0ead8;
+    --muted: #8a8070;
+    --border: rgba(201,168,76,0.2);
+    --free: #4caf7d;
+    --premium: #c9a84c;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: var(--font-ui);
+    background: var(--dark);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── WALLPAPER BACKGROUND ── */
+  #bg-canvas {
+    position: fixed; inset: 0; z-index: 0;
+    background: var(--dark);
+  }
+  /* 블러 배경 레이어 — 그림 외곽 색상으로 채움 */
+  #bg-blur {
+    position: fixed; inset: 0; z-index: 1;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity 1.5s ease;
+    filter: blur(60px) saturate(1.4) brightness(0.55);
+    transform: scale(1.15); /* 블러 엣지 잘림 방지 */
+  }
+  /* 실제 그림 레이어 — 비율 유지, 잘리지 않음 */
+  #bg-image {
+    position: fixed; inset: 0; z-index: 2;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity 1.5s ease;
+  }
+  #bg-overlay {
+    position: fixed; inset: 0; z-index: 3;
+    background: transparent; /* 그라데이션 제거 — 원작 색감 보호 */
+  }
+
+  /* ── LAYOUT ── */
+  #app { position: relative; z-index: 10; min-height: 100vh; }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 32px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+    position: sticky; top: 0; z-index: 100;
+    backdrop-filter: blur(2px);
+  }
+  .logo {
+    font-family: var(--font-title);
+    font-size: 22px;
+    letter-spacing: 4px;
+    color: var(--gold);
+    text-shadow: 0 0 30px rgba(201,168,76,0.4);
+  }
+  .logo span { font-size: 11px; display: block; letter-spacing: 6px; color: var(--muted); margin-top: -2px; font-family: var(--font-ui); font-weight: 300; }
+
+  nav { display: flex; gap: 8px; align-items: center; }
+  .nav-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 18px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 14px;
+    transition: all 0.3s;
+    letter-spacing: 1px;
+  }
+  .nav-btn:hover { background: rgba(201,168,76,0.1); border-color: var(--gold); color: var(--gold); }
+  .nav-btn.active { background: var(--gold); border-color: var(--gold); color: var(--dark); font-weight: 500; }
+
+  #login-btn {
+    background: rgba(201,168,76,0.15);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 9px 22px;
+    font-family: var(--font-title);
+    font-size: 12px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    border-radius: 14px;
+    transition: all 0.3s;
+    margin-left: 8px;
+  }
+  #login-btn:hover { background: var(--gold); color: var(--dark); }
+  #login-btn.logged-in { background: rgba(76,175,125,0.15); border-color: var(--free); color: var(--free); }
+
+  /* ── PAGES ── */
+  .page { display: none; padding: 0 32px 60px; }
+  .page.active { display: block; }
+
+  /* ── HERO (WALLPAPER VIEW) ── */
+  #page-home { padding: 0; }
+
+  .wallpaper-hero {
+    height: calc(100vh - 80px);
+    display: flex; flex-direction: column;
+    justify-content: flex-end;
+    padding: 40px;
+    position: relative;
+  }
+
+  .artwork-info {
+    max-width: 600px;
+    animation: slideUp 0.8s ease forwards;
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .artwork-badge { display: none; } /* PUBLIC DOMAIN/FREE 표기 숨김 */
+  .artwork-badge.premium { display: none; }
+  .artwork-badge.free { display: none; }
+
+  .artwork-title {
+    font-family: var(--font-title);
+    font-size: clamp(18px, 2.8vw, 32px);
+    font-weight: 300;
+    line-height: 1.1;
+    color: #fff;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.8);
+    margin-bottom: 8px;
+  }
+  .artwork-artist {
+    font-family: var(--font-title);
+    font-size: 20px;
+    font-style: italic;
+    color: var(--gold-light);
+    margin-bottom: 6px;
+  }
+  .artwork-meta {
+    font-size: 13px; color: rgba(255,255,255,0.6);
+    letter-spacing: 2px; font-weight: 300;
+  }
+
+  .wallpaper-controls {
+    position: absolute; bottom: 40px; right: 40px;
+    display: flex; flex-direction: column; gap: 12px; align-items: flex-end;
+  }
+
+  .timer-ring {
+    position: relative; width: 56px; height: 56px;
+    cursor: pointer;
+  }
+  .timer-ring svg { transform: rotate(-90deg); }
+  .timer-ring circle.bg { fill: none; stroke: rgba(255,255,255,0.1); stroke-width: 3; }
+  .timer-ring circle.progress { fill: none; stroke: var(--gold); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+  .timer-ring .icon {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: var(--text);
+  }
+
+  .ctrl-btn {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 44px; height: 44px;
+    border-radius: 16px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    transition: all 0.3s;
+    backdrop-filter: blur(8px);
+  }
+  .ctrl-btn:hover { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.1); }
+
+  .interval-select {
+    background: rgba(0,0,0,0.6);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 14px;
+    backdrop-filter: blur(8px);
+    outline: none;
+  }
+  .interval-select option { background: var(--deep); }
+
+  /* ── GALLERY GRID ── */
+  .section-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 40px 0 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+  .section-title {
+    font-family: var(--font-title);
+    font-size: 28px; letter-spacing: 4px; color: var(--gold);
+  }
+  .section-subtitle { font-size: 13px; color: var(--muted); letter-spacing: 2px; font-weight: 300; }
+
+  .filter-bar {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 32px;
+  }
+  .filter-chip {
+    padding: 6px 18px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 12px; letter-spacing: 1px;
+    cursor: pointer; border-radius: 20px;
+    transition: all 0.3s;
+  }
+  .filter-chip:hover, .filter-chip.active {
+    border-color: var(--gold); color: var(--gold);
+    background: rgba(201,168,76,0.08);
+  }
+
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 24px;
+  }
+
+  .art-card {
+    position: relative; cursor: pointer;
+    border: 1px solid var(--border);
+    border-radius: 22px; overflow: hidden;
+    background: var(--deep);
+    transition: all 0.4s;
+    group: true;
+  }
+  .art-card:hover { border-color: var(--gold); transform: translateY(-4px); box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 30px rgba(201,168,76,0.1); }
+
+  .art-card-img {
+    width: 100%; aspect-ratio: 4/3;
+    background-size: cover; background-position: center;
+    position: relative; overflow: hidden;
+  }
+  .art-card-img::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%);
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .art-card:hover .art-card-img::after { opacity: 1; }
+
+  .art-card-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 0.3s;
+    gap: 12px;
+  }
+  .art-card:hover .art-card-overlay { opacity: 1; }
+
+  .overlay-btn {
+    background: rgba(0,0,0,0.7);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 10px 20px;
+    font-family: var(--font-title);
+    font-size: 11px; letter-spacing: 2px;
+    cursor: pointer; border-radius: 12px;
+    transition: all 0.3s; backdrop-filter: blur(4px);
+  }
+  .overlay-btn:hover { background: var(--gold); color: var(--dark); }
+  .overlay-btn.lock {
+    border-color: rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.7);
+    background: rgba(0,0,0,0.5);
+  }
+
+  .art-card-info { padding: 16px; }
+  .art-card-title {
+    font-family: var(--font-title);
+    font-size: 17px; font-weight: 400;
+    color: var(--text); margin-bottom: 4px;
+  }
+  .art-card-artist { font-size: 13px; color: var(--muted); font-style: italic; margin-bottom: 8px; }
+  .art-card-footer { display: flex; justify-content: space-between; align-items: center; }
+  .art-card-year { font-size: 11px; color: rgba(255,255,255,0.3); letter-spacing: 2px; }
+  .art-badge {
+    font-size: 10px; letter-spacing: 2px; padding: 3px 10px;
+    border-radius: 20px; font-family: var(--font-title);
+  }
+  .art-badge.free { background: rgba(76,175,125,0.15); color: var(--free); border: 1px solid rgba(76,175,125,0.3); }
+  .art-badge.premium { background: rgba(201,168,76,0.15); color: var(--gold); border: 1px solid var(--border); }
+
+  /* ── LOGIN MODAL ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+
+  .modal {
+    background: var(--deep);
+    border: 1px solid var(--border);
+    padding: 48px;
+    max-width: 460px; width: 90%;
+    position: relative;
+    border-radius: 28px;
+    animation: modalIn 0.4s ease;
+  }
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.95) translateY(20px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .modal-close {
+    position: absolute; top: 20px; right: 20px;
+    background: none; border: none; color: var(--muted);
+    font-size: 24px; cursor: pointer;
+    transition: color 0.3s;
+  }
+  .modal-close:hover { color: var(--text); }
+
+  .modal-title {
+    font-family: var(--font-title);
+    font-size: 24px; letter-spacing: 4px; color: var(--gold);
+    margin-bottom: 8px;
+  }
+  .modal-subtitle { font-size: 13px; color: var(--muted); margin-bottom: 36px; font-weight: 300; }
+
+  .social-login-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px; margin-bottom: 16px;
+  }
+
+  .social-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 14px 20px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px; font-weight: 400;
+    cursor: pointer; border-radius: 16px;
+    transition: all 0.3s;
+    letter-spacing: 0.5px;
+  }
+  .social-btn:hover { transform: translateY(-2px); }
+  .social-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+  .social-btn.google { border-color: rgba(66,133,244,0.4); }
+  .social-btn.google:hover { background: rgba(66,133,244,0.1); border-color: #4285f4; }
+  .social-btn.github { border-color: rgba(255,255,255,0.2); }
+  .social-btn.github:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.5); }
+  .social-btn.facebook { border-color: rgba(24,119,242,0.4); }
+  .social-btn.facebook:hover { background: rgba(24,119,242,0.1); border-color: #1877F2; }
+
+
+  .social-btn.kakao {
+    background: #fee500; border-color: #fee500; color: #3c1e1e;
+  }
+  .social-btn.kakao:hover { background: #ffd900; box-shadow: 0 4px 20px rgba(254,229,0,0.3); }
+
+  .social-btn.naver {
+    background: #03c75a; border-color: #03c75a; color: #fff;
+  }
+  .social-btn.naver:hover { background: #02b350; box-shadow: 0 4px 20px rgba(3,199,90,0.3); }
+
+  .modal-divider {
+    text-align: center; margin: 20px 0;
+    position: relative; color: var(--muted); font-size: 12px;
+  }
+  .modal-divider::before, .modal-divider::after {
+    content: ''; position: absolute; top: 50%;
+    width: calc(50% - 30px); height: 1px;
+    background: var(--border);
+  }
+  .modal-divider::before { left: 0; }
+  .modal-divider::after { right: 0; }
+
+  .modal-note { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.6; margin-top: 20px; }
+
+  /* ── PAYMENT MODAL ── */
+  .payment-modal { max-width: 500px; }
+  .plan-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 28px 0; }
+  .plan-card {
+    border: 1px solid var(--border); padding: 24px;
+    border-radius: 20px; cursor: pointer;
+    transition: all 0.3s; position: relative;
+    background: rgba(255,255,255,0.02);
+  }
+  .plan-card.selected { border-color: var(--gold); background: rgba(201,168,76,0.08); }
+  .plan-card.recommended::before {
+    content: 'BEST'; position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    background: var(--gold); color: var(--dark);
+    font-family: var(--font-title); font-size: 10px; letter-spacing: 2px;
+    padding: 3px 12px; border-radius: 20px;
+  }
+  .plan-name { font-family: var(--font-title); font-size: 14px; letter-spacing: 2px; color: var(--gold); margin-bottom: 8px; }
+  .plan-price { font-family: var(--font-title); font-size: 32px; color: var(--text); }
+  .plan-price span { font-size: 14px; color: var(--muted); }
+  .plan-features { margin-top: 16px; }
+  .plan-features li { font-size: 12px; color: var(--muted); padding: 4px 0; list-style: none; padding-left: 16px; position: relative; }
+  .plan-features li::before { content: '✦'; position: absolute; left: 0; color: var(--gold); font-size: 8px; top: 5px; }
+
+  .pay-btn {
+    width: 100%; padding: 16px;
+    background: var(--gold);
+    border: none; color: var(--dark);
+    font-family: var(--font-title); font-size: 14px; letter-spacing: 3px;
+    cursor: pointer; border-radius: 16px;
+    transition: all 0.3s;
+  }
+  .pay-btn:hover { background: var(--gold-light); box-shadow: 0 8px 30px rgba(201,168,76,0.3); }
+
+  /* ── SETTINGS PAGE ── */
+  .settings-section { margin-bottom: 48px; }
+  .settings-section-title {
+    font-family: var(--font-title); font-size: 14px; letter-spacing: 3px; color: var(--gold);
+    margin-bottom: 20px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .settings-label { font-size: 14px; color: var(--text); }
+  .settings-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .donate-btn {
+    display: flex; align-items: center; gap: 12px;
+    width: 100%; padding: 14px 18px;
+    border-radius: 16px; border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04); color: var(--text);
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    transition: all 0.2s; text-align: left;
+  }
+  .donate-btn:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .donate-kofi { border-color: rgba(255,94,94,0.3); }
+  .donate-kofi:hover { background: rgba(255,94,94,0.08); border-color: #ff5e5e; }
+  .donate-kakao { border-color: rgba(254,229,0,0.4); }
+  .donate-kakao:hover { background: rgba(254,229,0,0.1); border-color: #fee900; }
+  .toggle {
+    width: 48px; height: 26px; background: rgba(255,255,255,0.1);
+    border-radius: 13px; cursor: pointer; position: relative;
+    transition: background 0.3s; border: none; flex-shrink: 0;
+  }
+  .toggle::after {
+    content: ''; position: absolute; width: 20px; height: 20px;
+    background: var(--muted); border-radius: 50%;
+    top: 3px; left: 3px; transition: all 0.3s;
+  }
+  .toggle.on { background: rgba(201,168,76,0.3); }
+  .toggle.on::after { background: var(--gold); left: 25px; }
+
+  .range-input {
+    -webkit-appearance: none; width: 160px; height: 3px;
+    background: var(--border); border-radius: 2px; outline: none;
+  }
+  .range-input::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px;
+    background: var(--gold); border-radius: 50%; cursor: pointer;
+  }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--deep); border: 1px solid var(--border);
+    padding: 14px 28px; font-size: 13px; color: var(--text);
+    border-radius: 18px; z-index: 9999; opacity: 0;
+    transition: all 0.4s; pointer-events: none; white-space: nowrap;
+    backdrop-filter: blur(8px);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--free); color: var(--free); }
+  .toast.gold { border-color: var(--gold); color: var(--gold); }
+
+  /* ── LOADING ── */
+  .loading-screen {
+    position: fixed; inset: 0; z-index: 9000;
+    background: var(--dark);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 24px;
+    transition: opacity 0.8s ease, visibility 0.8s;
+  }
+  .loading-screen.hidden { opacity: 0; visibility: hidden; }
+  .loading-logo {
+    font-family: var(--font-title); font-size: 48px; letter-spacing: 8px;
+    color: var(--gold); text-align: center;
+  }
+  .loading-logo span { display: block; font-size: 13px; letter-spacing: 10px; color: var(--muted); margin-top: 4px; }
+  .loading-bar {
+    width: 200px; height: 1px; background: var(--border); border-radius: 1px; overflow: hidden;
+  }
+  .loading-bar-fill {
+    height: 100%; background: var(--gold); width: 0%;
+    transition: width 0.1s; border-radius: 1px;
+  }
+
+  /* ── USER AVATAR ── */
+  .user-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: rgba(201,168,76,0.2); border: 1px solid var(--gold);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: var(--gold);
+    display: none;
+  }
+  .user-avatar.show { display: flex; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    header { padding: 16px 20px; }
+    .logo { font-size: 18px; }
+    nav { gap: 4px; }
+    .nav-btn { padding: 7px 12px; font-size: 12px; }
+    .page { padding: 0 20px 60px; }
+    .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .wallpaper-hero { padding: 24px; height: calc(100vh - 70px); }
+    .social-login-grid { grid-template-columns: 1fr; }
+    .plan-cards { grid-template-columns: 1fr; }
+    .modal { padding: 32px 24px; }
+  }
+
+  @media (max-width: 480px) {
+    .nav-btn span { display: none; }
+  }
+
+  /* ── CHROMECAST ── */
+  .cast-btn {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 44px; height: 44px;
+    border-radius: 16px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s;
+    backdrop-filter: blur(8px);
+  }
+  .cast-btn:hover { border-color: #1a73e8; color: #4fc3f7; background: rgba(26,115,232,0.12); }
+  .cast-btn.casting { border-color: #4fc3f7; color: #4fc3f7; background: rgba(26,115,232,0.18); animation: castPulse 2s ease-in-out infinite; }
+  @keyframes castPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(79,195,247,0.0); }
+    50%      { box-shadow: 0 0 0 6px rgba(79,195,247,0.18); }
+  }
+  .cast-btn svg { width: 22px; height: 22px; }
+
+  .cast-bar {
+    display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+    background: linear-gradient(90deg, #1a1f3a, #0d1428);
+    padding: 10px 24px;
+    align-items: center; justify-content: space-between;
+    font-size: 13px; color: #fff;
+    border-bottom: 1px solid rgba(79,195,247,0.3);
+    animation: slideDown 0.4s ease;
+  }
+  .cast-bar.active { display: flex; }
+  @keyframes slideDown {
+    from { transform: translateY(-100%); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+  }
+  .cast-bar-left { display: flex; align-items: center; gap: 12px; }
+  .cast-bar-dot  { width: 8px; height: 8px; background: #4fc3f7; border-radius: 50%; animation: dotPulse 1.5s ease infinite; }
+  @keyframes dotPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .cast-bar-title { font-family: var(--font-title); letter-spacing: 2px; font-size: 11px; color: #90caf9; }
+  .cast-bar-artwork { font-weight: 500; color: #fff; }
+  .cast-bar-device { font-size: 11px; color: #4fc3f7; margin-left: 8px; }
+  .cast-stop-btn {
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(79,195,247,0.4);
+    color: #4fc3f7; padding: 5px 16px; border-radius: 12px; cursor: pointer;
+    font-family: var(--font-title); font-size: 11px; letter-spacing: 2px;
+    transition: all 0.3s;
+  }
+  .cast-stop-btn:hover { background: rgba(79,195,247,0.15); border-color: #4fc3f7; color: #fff; }
+
+
+
+
+  .cast-tv-preview {
+    display: none; position: fixed; bottom: 70px; right: 20px; z-index: 400;
+    pointer-events: none;
+  }
+  .cast-tv-preview.active { display: block; }
+  .cast-tv-frame {
+    width: 200px; height: 116px;
+    border: 2px solid #4fc3f7;
+    border-radius: 4px 4px 0 0;
+    background: var(--dark);
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.8), 0 0 20px rgba(79,195,247,0.15);
+    animation: fadeIn 0.4s ease;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .cast-tv-img { width: 100%; height: 100%; background-size: cover; background-position: center; }
+  .cast-tv-stand {
+    width: 80px; height: 10px; margin: 0 auto;
+    background: #1a2744; border-radius: 0 0 4px 4px;
+    border: 1px solid rgba(79,195,247,0.2); border-top: none;
+  }
+  .cast-tv-base {
+    width: 120px; height: 5px; margin: 0 auto;
+    background: #0f1a2e; border-radius: 0 0 4px 4px;
+    border: 1px solid rgba(79,195,247,0.15); border-top: none;
+  }
+  .cast-tv-label {
+    text-align: center; margin-top: 6px;
+    font-family: var(--font-title); font-size: 9px; letter-spacing: 2px;
+    color: #4fc3f7; opacity: 0.8;
+  }
+
+  .cast-volume-row {
+    display: none; align-items: center; gap: 10px;
+    margin-top: 8px;
+  }
+  .cast-volume-row.show { display: flex; }
+  .cast-vol-icon { font-size: 16px; color: #4fc3f7; }
+  .cast-volume {
+    -webkit-appearance: none; flex: 1; height: 3px;
+    background: rgba(79,195,247,0.25); border-radius: 2px; outline: none;
+  }
+  .cast-volume::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px;
+    background: #4fc3f7; border-radius: 50%; cursor: pointer;
+  }
+  .cast-vol-val { font-size: 11px; color: #4fc3f7; width: 28px; text-align: right; }
+
+  /* ── FULLSCREEN MODE ── */
+  body.fullscreen-mode header { display: none; }
+  body.fullscreen-mode #page-home { position: fixed; inset: 0; z-index: 200; }
+  body.fullscreen-mode .wallpaper-hero { height: 100vh; }
+  body.fullscreen-mode #appInfoSection { display: none; }
+
+  /* 전체화면 모드 — #app 전체 숨기고 page-home만 표시 */
+  body.fullscreen-mode #app {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  body.fullscreen-mode #page-home {
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  /* 전체화면 버튼 */
+  #fullscreenBtn {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 44px; height: 44px;
+    border-radius: 16px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    transition: all 0.3s;
+    backdrop-filter: blur(8px);
+  }
+  #fullscreenBtn:hover { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.1); }
+  #fullscreenBtn svg { width: 20px; height: 20px; }
+
+  /* 전체화면 모드에서 UI 숨김/표시 */
+  body.fullscreen-mode .wallpaper-controls,
+  body.fullscreen-mode .artwork-info {
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  body.fullscreen-mode:hover .wallpaper-controls,
+  body.fullscreen-mode:hover .artwork-info,
+  body.fullscreen-mode.show-ui .wallpaper-controls,
+  body.fullscreen-mode.show-ui .artwork-info {
+    opacity: 1;
+  }
+
+  /* 전체화면 종료 힌트 */
+  .fs-hint {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 9999; pointer-events: none;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.15);
+    padding: 20px 36px; border-radius: 4px;
+    text-align: center; color: rgba(255,255,255,0.8);
+    font-family: var(--font-title); font-size: 13px; letter-spacing: 3px;
+    opacity: 0; transition: opacity 0.5s;
+  }
+  .fs-hint.show { opacity: 1; }
+  .fs-hint .fs-hint-key {
+    display: inline-block; background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.25); padding: 3px 10px;
+    border-radius: 3px; font-size: 12px; margin-top: 8px;
+    color: var(--gold); letter-spacing: 2px;
+  }
+
+  /* 전체화면 오버레이 더 어둡게 in fullscreen */
+  body.fullscreen-mode #bg-overlay { background: transparent; }
+</style>
+</head>
+<body>
+
+<!-- Fullscreen hint -->
+<div class="fs-hint" id="fsHint">
+  전체화면 모드<br>
+  <span class="fs-hint-key">ESC · 마우스 이동으로 컨트롤 표시</span>
+</div>
+
+<!-- Loading Screen -->
+<div class="loading-screen" id="loadingScreen">
+  <div class="loading-logo">GALERIE<span>세계 명화 갤러리</span></div>
+  <div class="loading-bar"><div class="loading-bar-fill" id="loadBar"></div></div>
+</div>
+
+<!-- Chromecast status bar -->
+<div class="cast-bar" id="castBar">
+  <div class="cast-bar-left">
+    <div class="cast-bar-dot"></div>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="#4fc3f7"><path d="M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2C12 14.14 7.07 10 1 10zm20-6H3C1.9 4 1 4.9 1 6v3c4.97 0 9 4.03 9 9 0 .34-.02.67-.05 1H13c.03-.33.05-.66.05-1 0-6.63-5.37-12-12-12V6h18v12h-5v2h5c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2z"/></svg>
+    <span class="cast-bar-title">CASTING TO</span>
+    <span class="cast-bar-artwork" id="castBarArtwork">—</span>
+    <span class="cast-bar-device" id="castBarDevice"></span>
+  </div>
+  <button class="cast-stop-btn" onclick="stopCasting()">■ 중단</button>
+</div>
+
+<!-- Cast TV Preview -->
+<div class="cast-tv-preview" id="castTvPreview">
+  <div class="cast-tv-frame">
+    <div class="cast-tv-img" id="castTvImg"></div>
+  </div>
+  <div class="cast-tv-stand"></div>
+  <div class="cast-tv-base"></div>
+  <div class="cast-tv-label">📡 CASTING</div>
+</div>
+
+<!-- Background -->
+<div id="bg-canvas"></div>
+<div id="bg-blur"></div>
+<div id="bg-image"></div>
+<div id="bg-overlay"></div>
+
+<!-- App -->
+<div id="app">
+  <header>
+    <div class="logo">GALERIE<span>MASTERPIECE GALLERY</span></div>
+    <nav>
+      <button class="nav-btn active" onclick="showPage('home')" data-page="home">🖼 전시</button>
+      <button class="nav-btn" onclick="showPage('gallery')" data-page="gallery">📚 갤러리</button>
+      <button class="nav-btn" onclick="showPage('settings')" data-page="settings">⚙ 설정</button>
+    </nav>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="user-avatar" id="userAvatar">👤</div>
+      <button id="login-btn" onclick="openLoginModal()">로그인</button>
+    </div>
+  </header>
+
+  <!-- HOME PAGE -->
+  <div id="page-home" class="page active">
+    <div class="wallpaper-hero">
+      <div class="artwork-info" id="artworkInfo">
+        <div class="artwork-badge free" id="artBadge">✦ FREE</div>
+        <div class="artwork-title" id="artTitle">별이 빛나는 밤</div>
+        <div class="artwork-artist" id="artArtist">Vincent van Gogh</div>
+        <div class="artwork-meta" id="artMeta">1889 · 포스트 인상주의 · 네덜란드</div>
+      </div>
+      <div class="wallpaper-controls">
+        <select class="interval-select" id="intervalSelect" onchange="setInterval_()">
+          <option value="10">10초</option>
+          <option value="30" selected>30초</option>
+          <option value="60">1분</option>
+          <option value="300">5분</option>
+          <option value="600">10분</option>
+          <option value="1800">30분</option>
+          <option value="3600">1시간</option>
+        </select>
+        <div class="timer-ring" id="timerRing" onclick="togglePause()">
+          <svg width="56" height="56" viewBox="0 0 56 56">
+            <circle class="bg" cx="28" cy="28" r="24"/>
+            <circle class="progress" id="timerCircle" cx="28" cy="28" r="24" stroke-dasharray="150.8" stroke-dashoffset="0"/>
+          </svg>
+          <div class="icon" id="timerIcon">⏸</div>
+        </div>
+        <button class="ctrl-btn" onclick="prevArt()" title="이전">‹</button>
+        <button class="ctrl-btn" onclick="nextArt()" title="다음">›</button>
+        <button class="ctrl-btn" onclick="setAsWallpaper()" title="배경화면 저장">⬇</button>
+        <button id="fullscreenBtn" onclick="toggleFullscreen()" title="전체화면">
+          <svg id="fsIcon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+          </svg>
+        </button>
+        <button class="cast-btn ctrl-btn" id="castBtn" onclick="openCastModal()" title="TV로 전송 (Chromecast)">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2C12 14.14 7.07 10 1 10zm20-6H3C1.9 4 1 4.9 1 6v3c4.97 0 9 4.03 9 9 0 .34-.02.67-.05 1H13c.03-.33.05-.66.05-1 0-6.63-5.37-12-12-12V6h18v12h-5v2h5c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2z"/></svg>
+        </button>
+        <div class="cast-volume-row" id="castVolumeRow">
+          <span class="cast-vol-icon">🔊</span>
+          <input type="range" class="cast-volume" id="castVolume" min="0" max="100" value="80" oninput="setCastVolume(this.value)">
+          <span class="cast-vol-val" id="castVolVal">80</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GALLERY PAGE -->
+  <div id="page-gallery" class="page">
+    <div class="section-header">
+      <div>
+        <div class="section-title">COLLECTION</div>
+        <div class="section-subtitle">세계 명화 컬렉션 — 저작권 만료 작품</div>
+      </div>
+      <div id="galleryCount" style="font-size:13px;color:var(--muted)"></div>
+    </div>
+    <div class="filter-bar" id="filterBar"></div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+  </div>
+
+  <!-- SETTINGS PAGE -->
+  <div id="page-settings" class="page">
+    <div class="section-header">
+      <div>
+        <div class="section-title">SETTINGS</div>
+        <div class="section-subtitle">앱 환경 설정</div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">배경화면 전환</div>
+      <div class="settings-row">
+        <div><div class="settings-label">자동 전환</div><div class="settings-desc">일정 시간마다 명화를 자동으로 전환합니다</div></div>
+        <button class="toggle on" id="autoToggle" onclick="toggleAuto()"></button>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-label">🔀 랜덤 전환</div><div class="settings-desc">켜짐 — 무작위 순서 / 꺼짐 — 등록 순서대로</div></div>
+        <button class="toggle on" id="shuffleToggle" onclick="toggleShuffle()"></button>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-label">전환 애니메이션</div><div class="settings-desc">부드러운 페이드 전환 효과</div></div>
+        <button class="toggle on" id="fadeToggle" onclick="this.classList.toggle('on')"></button>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-label">화질 설정</div></div>
+        <input type="range" class="range-input" min="1" max="3" value="2">
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">컬렉션 필터</div>
+      <div class="settings-row">
+        <div><div class="settings-label">무료 작품만 표시</div></div>
+        <button class="toggle" id="freeOnlyToggle" onclick="this.classList.toggle('on')"></button>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-label">즐겨찾기 포함</div></div>
+        <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">크롬캐스트 (TV 전송)</div>
+      <div class="settings-row">
+        <div><div class="settings-label">자동 캐스팅</div><div class="settings-desc">연결된 TV로 명화를 자동 전송합니다</div></div>
+        <button class="toggle" id="autoCastToggle" onclick="this.classList.toggle('on')"></button>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-label">TV 화질</div><div class="settings-desc">캐스팅 시 전송 해상도</div></div>
+        <select class="interval-select" style="font-size:12px">
+          <option>1080p (Full HD)</option>
+          <option selected>4K UHD</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-label">기기 연결</div><div class="settings-desc" id="castSettingsStatus">연결된 기기 없음</div></div>
+        <button class="nav-btn" onclick="openCastModal()" style="border-color:#4fc3f7;color:#4fc3f7">기기 검색</button>
+      </div>
+      <!-- Samsung TV 활성화 안내 -->
+      <div style="margin-top:14px;padding:14px 16px;border-radius:12px;background:rgba(79,195,247,0.06);border:0.5px solid rgba(79,195,247,0.2)">
+        <div style="font-size:12px;font-weight:500;color:#4fc3f7;margin-bottom:8px">📺 Samsung TV가 목록에 안 보이나요?</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.8">
+          Samsung 스마트TV(2019년 이후)는 Chromecast Built-in이 내장되어 있습니다.<br>
+          <strong style="color:var(--text)">TV 설정 → 일반 → Apple AirPlay 설정 → Chromecast 활성화</strong><br>
+          또는: <strong style="color:var(--text)">설정 → 연결 → 무선 스크린/AirPlay</strong><br>
+          활성화 후 폰과 TV가 <strong style="color:var(--text)">같은 Wi-Fi</strong>에 연결되면 자동 탐색됩니다.
+        </div>
+      </div>
+    </div>
+      <div class="settings-row">
+        <div><div class="settings-label">현재 플랜</div><div class="settings-desc" id="currentPlan">무료 플랜 — 100개 작품 이용 가능</div></div>
+        <button class="nav-btn" onclick="openPaymentModal()" style="border-color:var(--gold);color:var(--gold)">업그레이드</button>
+      </div>
+    </div>
+
+    <div class="settings-section" id="appInfoSection">
+      <div class="settings-row">
+        <div><div class="settings-label">버전</div></div>
+        <div style="font-size:13px;color:var(--muted)">1.0.0</div>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-label">데이터베이스</div><div class="settings-desc">Met Museum · Art Institute Chicago · Cleveland Museum · Getty · NGA · Rijksmuseum · Wikimedia CC0</div></div>
+        <div style="font-size:11px;color:var(--free)" id="dbStatus">● 연결 중</div>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-label">저작권 정책</div><div class="settings-desc">Public Domain / CC0 / 공공누리 1유형 작품만 사용</div></div>
+      </div>
+    </div>
+
+    <!-- ── 저작권 크레딧 ── -->
+    <div class="settings-section">
+      <div class="settings-section-title">저작권 크레딧</div>
+      <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:6px">
+        <div class="settings-desc" style="line-height:1.8">
+          본 앱은 다음 출처의 공개도메인·CC0·공공누리 이미지를 사용합니다.<br>
+          · Metropolitan Museum of Art (CC0)<br>
+          · Art Institute of Chicago (CC0)<br>
+          · Cleveland Museum of Art (CC0)<br>
+          · Wikimedia Commons (Public Domain / CC0)<br>
+          · 국립중앙박물관 (공공누리 제1유형, museum.go.kr)<br>
+          · 이중섭 작품: 사후 70년 경과, 공개도메인 (한국 저작권법)
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 개발자 후원 ── -->
+    <div class="settings-section">
+      <div class="settings-section-title">개발자 후원 ☕</div>
+      <div class="settings-row">
+        <div>
+          <div class="settings-label">이 앱이 마음에 드셨나요?</div>
+          <div class="settings-desc">커피 한 잔으로 개발자를 응원해 주세요</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+        <button class="donate-btn donate-kofi" onclick="openDonation('kofi')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M23.881 8.948c-.773-4.085-4.859-4.591-4.859-4.591H.767l.723 4.994c.001.01.002.02.003.029H1.97l1.804 10.04c.376 2.09 2.303 2.98 4.184 2.98h7.105c1.871 0 3.816-.89 4.18-2.98l1.072-5.965c.459.178.992.303 1.636.303 2.29 0 3.803-1.593 3.803-4.225-.001-.83-.203-1.66-.873-2.585zM5.293 11.9l-.21-1.36 1.016 1.217.294-.003-.214-1.298 1.018 1.218.294-.003-.215-1.29 1.014 1.21.294-.003-1.218-1.468a1.023 1.023 0 00-1.444.006L5.293 11.9zm8.7 1.476c.352.352.352.93 0 1.284l-3.32 3.321a.908.908 0 01-1.284 0l-.942-.942a.908.908 0 010-1.284l3.321-3.322a.907.907 0 011.284 0l.941.943zm5.604-1.256c-.41.34-1.018.518-1.729.518-.345 0-.668-.04-.948-.112l.483-2.693c.228.06.48.095.74.095.855 0 1.395.39 1.395 1.06 0 .46-.22.85-.59 1.132z"/></svg>
+          <span>Ko-fi 후원</span>
+          <span style="margin-left:auto;font-size:11px;opacity:0.7">USD · EUR · 수수료 0%</span>
+        </button>
+        <button class="donate-btn donate-kakao" onclick="openDonation('kakao')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#fee500" style="flex-shrink:0"><path d="M12 3C6.48 3 2 6.48 2 10.8c0 2.73 1.73 5.13 4.36 6.56l-1.1 4.05c-.1.36.3.64.6.42L10.5 19c.49.07.99.1 1.5.1 5.52 0 10-3.48 10-7.8S17.52 3 12 3z"/></svg>
+          <span>카카오페이 후원</span>
+          <span style="margin-left:auto;font-size:11px;opacity:0.7">KRW</span>
+        </button>
+      </div>
+      <div class="settings-desc" style="margin-top:12px;text-align:center">후원은 새 작품 추가와 앱 유지에 사용됩니다 🙏</div>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN MODAL -->
+<!-- ━━━ LOGIN MODAL ━━━ -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal" style="max-width:420px">
+    <button class="modal-close" onclick="closeModal('loginModal')">×</button>
+
+    <!-- VIEW: 소셜 로그인 선택 -->
+    <div id="loginView-social">
+      <div class="modal-title">SIGN IN</div>
+      <div class="modal-subtitle" style="margin-bottom:24px">명화 컬렉션을 감상하세요</div>
+
+      <!-- 소셜 버튼 -->
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="social-btn google" onclick="loginWithGoogle()" style="width:100%;justify-content:center;gap:10px">
+          <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          Google로 계속하기
+        </button>
+        <button class="social-btn facebook" onclick="loginWithFacebook()" style="width:100%;justify-content:center;gap:10px">
+          <svg viewBox="0 0 24 24" fill="#1877F2" width="18" height="18"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          Facebook으로 계속하기
+        </button>
+        <button class="social-btn kakao" onclick="loginWithKakao()" style="width:100%;justify-content:center;gap:10px">
+          <svg viewBox="0 0 24 24" fill="#3c1e1e" width="18" height="18"><path d="M12 3C6.48 3 2 6.48 2 10.8c0 2.73 1.73 5.13 4.36 6.56l-1.1 4.05c-.1.36.3.64.6.42L10.5 19c.49.07.99.1 1.5.1 5.52 0 10-3.48 10-7.8S17.52 3 12 3z"/></svg>
+          카카오로 계속하기
+        </button>
+        <button class="social-btn naver" onclick="loginWithNaver()" style="width:100%;justify-content:center;gap:10px">
+          <svg viewBox="0 0 24 24" fill="white" width="18" height="18"><path d="M16.273 12.845L7.376 0H0v24h7.727V11.155L16.624 24H24V0h-7.727z"/></svg>
+          네이버로 계속하기
+        </button>
+        <button class="social-btn github" onclick="loginWithGitHub()" style="width:100%;justify-content:center;gap:10px">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
+          GitHub으로 계속하기
+        </button>
+      </div>
+
+      <div class="modal-divider" style="margin:20px 0">또는</div>
+
+      <!-- 이메일 로그인 버튼 -->
+      <button onclick="showLoginView('email')" style="width:100%;padding:12px;border-radius:12px;border:0.5px solid var(--border);background:transparent;color:var(--text);font-size:13px;cursor:pointer;transition:all .2s">
+        📧 이메일로 로그인
+      </button>
+      <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--muted)">
+        계정이 없으신가요?
+        <span onclick="showLoginView('register')" style="color:var(--gold);cursor:pointer;margin-left:4px">회원가입</span>
+      </div>
+    </div>
+
+    <!-- VIEW: 이메일 로그인 -->
+    <div id="loginView-email" style="display:none">
+      <button onclick="showLoginView('social')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;margin-bottom:16px;padding:0">← 돌아가기</button>
+      <div class="modal-title" style="font-size:18px;margin-bottom:20px">이메일 로그인</div>
+      <div id="loginError" style="display:none;padding:10px 14px;border-radius:10px;background:rgba(226,75,74,.1);border:0.5px solid rgba(226,75,74,.3);color:#f09595;font-size:12px;margin-bottom:14px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <input id="loginEmail" type="email" placeholder="이메일 주소" style="padding:12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+        <div style="position:relative">
+          <input id="loginPassword" type="password" placeholder="비밀번호" style="width:100%;padding:12px 44px 12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+          <span onclick="togglePwVis('loginPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:16px;color:var(--muted)">👁</span>
+        </div>
+        <button onclick="loginWithEmail()" id="emailLoginBtn" style="padding:13px;border-radius:12px;background:var(--gold);border:none;color:#0d0c09;font-size:14px;font-weight:500;cursor:pointer;transition:opacity .2s">
+          로그인
+        </button>
+      </div>
+      <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--muted)">
+        <span onclick="showLoginView('reset')" style="color:var(--gold);cursor:pointer">비밀번호를 잊으셨나요?</span>
+        &nbsp;·&nbsp;
+        <span onclick="showLoginView('register')" style="color:var(--gold);cursor:pointer">회원가입</span>
+      </div>
+    </div>
+
+    <!-- VIEW: 회원가입 -->
+    <div id="loginView-register" style="display:none">
+      <button onclick="showLoginView('social')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;margin-bottom:16px;padding:0">← 돌아가기</button>
+      <div class="modal-title" style="font-size:18px;margin-bottom:20px">회원가입</div>
+      <div id="registerError" style="display:none;padding:10px 14px;border-radius:10px;background:rgba(226,75,74,.1);border:0.5px solid rgba(226,75,74,.3);color:#f09595;font-size:12px;margin-bottom:14px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <input id="regName" type="text" placeholder="이름 (닉네임)" style="padding:12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+        <input id="regEmail" type="email" placeholder="이메일 주소" style="padding:12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+        <div style="position:relative">
+          <input id="regPassword" type="password" placeholder="비밀번호 (6자 이상)" style="width:100%;padding:12px 44px 12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+          <span onclick="togglePwVis('regPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:16px;color:var(--muted)">👁</span>
+        </div>
+        <input id="regPasswordConfirm" type="password" placeholder="비밀번호 확인" style="padding:12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+        <button onclick="registerWithEmail()" style="padding:13px;border-radius:12px;background:var(--gold);border:none;color:#0d0c09;font-size:14px;font-weight:500;cursor:pointer">
+          가입하기
+        </button>
+      </div>
+      <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--muted)">
+        이미 계정이 있으신가요?
+        <span onclick="showLoginView('email')" style="color:var(--gold);cursor:pointer;margin-left:4px">로그인</span>
+      </div>
+    </div>
+
+    <!-- VIEW: 비밀번호 재설정 -->
+    <div id="loginView-reset" style="display:none">
+      <button onclick="showLoginView('email')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;margin-bottom:16px;padding:0">← 돌아가기</button>
+      <div class="modal-title" style="font-size:18px;margin-bottom:8px">비밀번호 재설정</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.6">가입한 이메일을 입력하면 재설정 링크를 보내드립니다.</div>
+      <div id="resetMsg" style="display:none;padding:10px 14px;border-radius:10px;background:rgba(29,158,117,.1);border:0.5px solid rgba(29,158,117,.3);color:#5dcaa5;font-size:12px;margin-bottom:14px"></div>
+      <div id="resetError" style="display:none;padding:10px 14px;border-radius:10px;background:rgba(226,75,74,.1);border:0.5px solid rgba(226,75,74,.3);color:#f09595;font-size:12px;margin-bottom:14px"></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <input id="resetEmail" type="email" placeholder="가입한 이메일 주소" style="padding:12px 14px;border-radius:12px;border:0.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:13px;outline:none" />
+        <button onclick="sendPasswordReset()" style="padding:13px;border-radius:12px;background:var(--gold);border:none;color:#0d0c09;font-size:14px;font-weight:500;cursor:pointer">
+          재설정 링크 보내기
+        </button>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;font-size:11px;color:var(--muted);text-align:center;line-height:1.7">
+      로그인 시 <u style="cursor:pointer">이용약관</u> 및 <u style="cursor:pointer">개인정보처리방침</u>에 동의합니다.
+    </div>
+  </div>
+</div>
+
+<!-- PAYMENT MODAL -->
+<div class="modal-overlay" id="paymentModal">
+  <div class="modal payment-modal">
+    <button class="modal-close" onclick="closeModal('paymentModal')">×</button>
+    <div class="modal-title">PREMIUM</div>
+    <div class="modal-subtitle">프리미엄 작품과 고해상도를 무제한으로 즐기세요</div>
+    <div class="plan-cards">
+      <div class="plan-card" id="plan-month" onclick="selectPlan('month')">
+        <div class="plan-name">MONTHLY</div>
+        <div class="plan-price">₩4,900<span>/월</span></div>
+        <ul class="plan-features">
+          <li>500+ 프리미엄 작품</li>
+          <li>4K 고해상도 다운로드</li>
+          <li>광고 없는 감상</li>
+        </ul>
+      </div>
+      <div class="plan-card recommended selected" id="plan-year" onclick="selectPlan('year')">
+        <div class="plan-name">ANNUAL</div>
+        <div class="plan-price">₩39,000<span>/년</span></div>
+        <ul class="plan-features">
+          <li>500+ 프리미엄 작품</li>
+          <li>4K 고해상도 다운로드</li>
+          <li>광고 없는 감상</li>
+          <li>33% 절약</li>
+        </ul>
+      </div>
+    </div>
+    <button class="pay-btn" onclick="processPayment()">결제하기</button>
+    <div class="modal-note" style="margin-top:16px">언제든지 해지 가능 · SSL 보안 결제 · 정기 구독</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- CHROMECAST MODAL -->
+
+
+
+<script>
+//  GALERIE — 전세계 공개도메인 명화 DB (저작권 만료 확인)
+//  출처: Wikimedia CC0 · Met Museum · Art Institute Chicago
+//        Cleveland Museum · Getty Open Content · NGA CC0
+//        Rijksmuseum · 국립중앙박물관
+// ════════════════════════════════════════════════════════
+const localArtworks = [
+
+  // ── 반 고흐 (Vincent van Gogh 1853-1890) ─────────────
+  { id:1,  title:"별이 빛나는 밤", titleEn:"The Starry Night", artist:"Vincent van Gogh", year:1889, movement:"포스트 인상주의", origin:"네덜란드", premium:false, url:"images/full/001_full.jpg", thumb:"images/thumb/001_thumb.jpg", category:"인상주의" },
+  { id:2,  title:"해바라기", titleEn:"Sunflowers", artist:"Vincent van Gogh", year:1888, movement:"포스트 인상주의", origin:"네덜란드", premium:false, url:"images/full/002_full.jpg", thumb:"images/thumb/002_thumb.jpg", category:"인상주의" },
+  { id:3,  title:"론 강의 별밤", titleEn:"Starry Night Over the Rhône", artist:"Vincent van Gogh", year:1888, movement:"포스트 인상주의", origin:"네덜란드", premium:false, url:"images/full/003_full.jpg", thumb:"images/thumb/003_thumb.jpg", category:"인상주의" },
+  { id:4,  title:"아를의 침실", titleEn:"Bedroom in Arles", artist:"Vincent van Gogh", year:1888, movement:"포스트 인상주의", origin:"네덜란드", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Van_Gogh_-_Bedroom_in_Arles_-_Letter_sketch_October_1888.jpg/1280px-Van_Gogh_-_Bedroom_in_Arles_-_Letter_sketch_October_1888.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Van_Gogh_-_Bedroom_in_Arles_-_Letter_sketch_October_1888.jpg/400px-Van_Gogh_-_Bedroom_in_Arles_-_Letter_sketch_October_1888.jpg", category:"인상주의" },
+  { id:5,  title:"아이리스", titleEn:"Irises", artist:"Vincent van Gogh", year:1889, movement:"포스트 인상주의", origin:"네덜란드", premium:false, url:"images/full/005_full.jpg", thumb:"images/thumb/005_thumb.jpg", category:"인상주의" },
+  { id:6,  title:"밀짚모자를 쓴 자화상", titleEn:"Self-Portrait with Straw Hat", artist:"Vincent van Gogh", year:1887, movement:"포스트 인상주의", origin:"네덜란드", premium:false, url:"images/full/006_full.jpg", thumb:"images/thumb/006_thumb.jpg", category:"인상주의" },
+  { id:7,  title:"씨 뿌리는 사람", titleEn:"The Sower", artist:"Vincent van Gogh", year:1888, movement:"포스트 인상주의", origin:"네덜란드", premium:false, url:"images/full/007_full.jpg", thumb:"images/thumb/007_thumb.jpg", category:"인상주의" },
+  { id:8,  title:"밤의 카페", titleEn:"The Night Cafe", artist:"Vincent van Gogh", year:1888, movement:"포스트 인상주의", origin:"네덜란드", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Van_Gogh_-_The_Night_Cafe_-_Yale_University_Art_Gallery.jpg/1280px-Van_Gogh_-_The_Night_Cafe_-_Yale_University_Art_Gallery.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Van_Gogh_-_The_Night_Cafe_-_Yale_University_Art_Gallery.jpg/400px-Van_Gogh_-_The_Night_Cafe_-_Yale_University_Art_Gallery.jpg", category:"인상주의" },
+
+  // ── 클로드 모네 (Claude Monet 1840-1926) ─────────────
+  { id:9,  title:"수련", titleEn:"Water Lilies", artist:"Claude Monet", year:1906, movement:"인상주의", origin:"프랑스", premium:false, url:"images/full/009_full.jpg", thumb:"images/thumb/009_thumb.jpg", category:"인상주의" },
+  { id:10, title:"인상, 해돋이", titleEn:"Impression, Sunrise", artist:"Claude Monet", year:1872, movement:"인상주의", origin:"프랑스", premium:false, url:"images/full/010_full.jpg", thumb:"images/thumb/010_thumb.jpg", category:"인상주의" },
+  { id:11, title:"루앙 대성당", titleEn:"Rouen Cathedral", artist:"Claude Monet", year:1894, movement:"인상주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Claude_Monet_-_Rouen_Cathedral%2C_Facade_%28Sunset%29.jpg/840px-Claude_Monet_-_Rouen_Cathedral%2C_Facade_%28Sunset%29.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Claude_Monet_-_Rouen_Cathedral%2C_Facade_%28Sunset%29.jpg/400px-Claude_Monet_-_Rouen_Cathedral%2C_Facade_%28Sunset%29.jpg", category:"인상주의" },
+  { id:12, title:"건초더미", titleEn:"Haystacks", artist:"Claude Monet", year:1891, movement:"인상주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Claude_Monet%2C_Meules%2C_1890%2C_oil_on_canvas%2C_65.4_x_92_cm%2C_W_1273%2C_Art_Institute_of_Chicago.jpg/1280px-Claude_Monet%2C_Meules%2C_1890%2C_oil_on_canvas%2C_65.4_x_92_cm%2C_W_1273%2C_Art_Institute_of_Chicago.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Claude_Monet%2C_Meules%2C_1890%2C_oil_on_canvas%2C_65.4_x_92_cm%2C_W_1273%2C_Art_Institute_of_Chicago.jpg/400px-Claude_Monet%2C_Meules%2C_1890%2C_oil_on_canvas%2C_65.4_x_92_cm%2C_W_1273%2C_Art_Institute_of_Chicago.jpg", category:"인상주의" },
+  { id:13, title:"일본풍 다리", titleEn:"The Japanese Footbridge", artist:"Claude Monet", year:1899, movement:"인상주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Claude_Monet_-_The_Japanese_Footbridge_-_Google_Art_Project.jpg/1280px-Claude_Monet_-_The_Japanese_Footbridge_-_Google_Art_Project.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Claude_Monet_-_The_Japanese_Footbridge_-_Google_Art_Project.jpg/400px-Claude_Monet_-_The_Japanese_Footbridge_-_Google_Art_Project.jpg", category:"인상주의" },
+  { id:14, title:"라 그르누이에르", titleEn:"La Grenouillère", artist:"Claude Monet", year:1869, movement:"인상주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Claude_Monet_-_La_Grenouill%C3%A8re_%28Metropolitan_Museum_of_Art%29.jpg/1280px-Claude_Monet_-_La_Grenouill%C3%A8re_%28Metropolitan_Museum_of_Art%29.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Claude_Monet_-_La_Grenouill%C3%A8re_%28Metropolitan_Museum_of_Art%29.jpg/400px-Claude_Monet_-_La_Grenouill%C3%A8re_%28Metropolitan_Museum_of_Art%29.jpg", category:"인상주의" },
+
+  // ── 르네상스 ────────────────────────────────────────
+  { id:15, title:"모나리자", titleEn:"Mona Lisa", artist:"Leonardo da Vinci", year:1503, movement:"르네상스", origin:"이탈리아", premium:false, url:"images/full/015_full.jpg", thumb:"images/thumb/015_thumb.jpg", category:"르네상스" },
+  { id:16, title:"최후의 만찬", titleEn:"The Last Supper", artist:"Leonardo da Vinci", year:1498, movement:"르네상스", origin:"이탈리아", premium:false, url:"images/full/016_full.jpg", thumb:"images/thumb/016_thumb.jpg", category:"르네상스" },
+  { id:17, title:"아담의 창조", titleEn:"Creation of Adam", artist:"Michelangelo", year:1512, movement:"르네상스", origin:"이탈리아", premium:false, url:"images/full/017_full.jpg", thumb:"images/thumb/017_thumb.jpg", category:"르네상스" },
+  { id:18, title:"아테네 학당", titleEn:"The School of Athens", artist:"Raphael", year:1511, movement:"르네상스", origin:"이탈리아", premium:false, url:"images/full/018_full.jpg", thumb:"images/thumb/018_thumb.jpg", category:"르네상스" },
+  { id:19, title:"비너스의 탄생", titleEn:"The Birth of Venus", artist:"Sandro Botticelli", year:1485, movement:"르네상스", origin:"이탈리아", premium:false, url:"images/full/019_full.jpg", thumb:"images/thumb/019_thumb.jpg", category:"르네상스" },
+  { id:20, title:"봄 (프리마베라)", titleEn:"Primavera", artist:"Sandro Botticelli", year:1482, movement:"르네상스", origin:"이탈리아", premium:false, url:"images/full/020_full.jpg", thumb:"images/thumb/020_thumb.jpg", category:"르네상스" },
+  { id:21, title:"아르놀피니의 결혼", titleEn:"The Arnolfini Portrait", artist:"Jan van Eyck", year:1434, movement:"북방 르네상스", origin:"플랑드르", premium:false, url:"images/full/021_full.jpg", thumb:"images/thumb/021_thumb.jpg", category:"르네상스" },
+  { id:22, title:"성 게오르기우스와 용", titleEn:"Saint George and the Dragon", artist:"Raphael", year:1506, movement:"르네상스", origin:"이탈리아", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Raffaello_-_San_Giorgio_e_il_drago_1505-1506.jpg/893px-Raffaello_-_San_Giorgio_e_il_drago_1505-1506.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Raffaello_-_San_Giorgio_e_il_drago_1505-1506.jpg/400px-Raffaello_-_San_Giorgio_e_il_drago_1505-1506.jpg", category:"르네상스" },
+  { id:23, title:"수태고지", titleEn:"The Annunciation", artist:"Fra Angelico", year:1438, movement:"르네상스", origin:"이탈리아", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Fra_Angelico_-_The_Annunciation_%28Cortona%29.jpg/1280px-Fra_Angelico_-_The_Annunciation_%28Cortona%29.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Fra_Angelico_-_The_Annunciation_%28Cortona%29.jpg/400px-Fra_Angelico_-_The_Annunciation_%28Cortona%29.jpg", category:"르네상스" },
+
+  // ── 바로크 ───────────────────────────────────────────
+  { id:24, title:"진주 귀걸이를 한 소녀", titleEn:"Girl with a Pearl Earring", artist:"Johannes Vermeer", year:1665, movement:"바로크", origin:"네덜란드", premium:false, url:"images/full/024_full.jpg", thumb:"images/thumb/024_thumb.jpg", category:"바로크" },
+  { id:25, title:"우유를 따르는 여인", titleEn:"The Milkmaid", artist:"Johannes Vermeer", year:1658, movement:"바로크", origin:"네덜란드", premium:false, url:"images/full/025_full.jpg", thumb:"images/thumb/025_thumb.jpg", category:"바로크" },
+  { id:26, title:"델프트 풍경", titleEn:"View of Delft", artist:"Johannes Vermeer", year:1660, movement:"바로크", origin:"네덜란드", premium:false, url:"images/full/026_full.jpg", thumb:"images/thumb/026_thumb.jpg", category:"바로크" },
+  { id:27, title:"야경", titleEn:"The Night Watch", artist:"Rembrandt van Rijn", year:1642, movement:"바로크", origin:"네덜란드", premium:false, url:"images/full/027_full.jpg", thumb:"images/thumb/027_thumb.jpg", category:"바로크" },
+  { id:28, title:"자화상 (렘브란트)", titleEn:"Self-Portrait", artist:"Rembrandt van Rijn", year:1659, movement:"바로크", origin:"네덜란드", premium:false, url:"images/full/028_full.jpg", thumb:"images/thumb/028_thumb.jpg", category:"바로크" },
+  { id:29, title:"시녀들", titleEn:"Las Meninas", artist:"Diego Velázquez", year:1656, movement:"바로크", origin:"스페인", premium:false, url:"images/full/029_full.jpg", thumb:"images/thumb/029_thumb.jpg", category:"바로크" },
+  { id:30, title:"다윗과 골리앗", titleEn:"David with the Head of Goliath", artist:"Caravaggio", year:1610, movement:"바로크", origin:"이탈리아", premium:false, url:"images/full/030_full.jpg", thumb:"images/thumb/030_thumb.jpg", category:"바로크" },
+  { id:31, title:"유딧과 홀로페르네스", titleEn:"Judith Slaying Holofernes", artist:"Artemisia Gentileschi", year:1620, movement:"바로크", origin:"이탈리아", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Artemisia_Gentileschi_-_Jael_and_Sisera_-_WGA8551.jpg/881px-Artemisia_Gentileschi_-_Jael_and_Sisera_-_WGA8551.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Artemisia_Gentileschi_-_Jael_and_Sisera_-_WGA8551.jpg/400px-Artemisia_Gentileschi_-_Jael_and_Sisera_-_WGA8551.jpg", category:"바로크" },
+  { id:32, title:"동방 박사의 경배", titleEn:"Adoration of the Magi", artist:"Peter Paul Rubens", year:1624, movement:"바로크", origin:"플랑드르", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Peter_Paul_Rubens_-_Adoration_of_the_Magi_-_Google_Art_Project.jpg/1280px-Peter_Paul_Rubens_-_Adoration_of_the_Magi_-_Google_Art_Project.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Peter_Paul_Rubens_-_Adoration_of_the_Magi_-_Google_Art_Project.jpg/400px-Peter_Paul_Rubens_-_Adoration_of_the_Magi_-_Google_Art_Project.jpg", category:"바로크" },
+
+  // ── 낭만주의 ─────────────────────────────────────────
+  { id:33, title:"자유의 여신", titleEn:"Liberty Leading the People", artist:"Eugène Delacroix", year:1830, movement:"낭만주의", origin:"프랑스", premium:false, url:"images/full/033_full.jpg", thumb:"images/thumb/033_thumb.jpg", category:"낭만주의" },
+  { id:34, title:"안개 바다 위의 방랑자", titleEn:"Wanderer above the Sea of Fog", artist:"Caspar David Friedrich", year:1818, movement:"낭만주의", origin:"독일", premium:false, url:"images/full/034_full.jpg", thumb:"images/thumb/034_thumb.jpg", category:"낭만주의" },
+  { id:35, title:"나폴레옹의 대관식", titleEn:"The Coronation of Napoleon", artist:"Jacques-Louis David", year:1807, movement:"신고전주의", origin:"프랑스", premium:false, url:"images/full/035_full.jpg", thumb:"images/thumb/035_thumb.jpg", category:"낭만주의" },
+  { id:36, title:"건초 마차", titleEn:"The Hay Wain", artist:"John Constable", year:1821, movement:"낭만주의", origin:"영국", premium:false, url:"images/full/036_full.jpg", thumb:"images/thumb/036_thumb.jpg", category:"낭만주의" },
+  { id:37, title:"비, 증기, 속도", titleEn:"Rain, Steam and Speed", artist:"J.M.W. Turner", year:1844, movement:"낭만주의", origin:"영국", premium:false, url:"images/full/037_full.jpg", thumb:"images/thumb/037_thumb.jpg", category:"낭만주의" },
+  { id:38, title:"노예선", titleEn:"The Slave Ship", artist:"J.M.W. Turner", year:1840, movement:"낭만주의", origin:"영국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Joseph_Mallord_William_Turner_-_Slave_Ship_%28Slavers_Throwing_Overboard_the_Dead_and_Dying%2C_Typhoon_Coming_On%29_-_Google_Art_Project.jpg/1280px-Joseph_Mallord_William_Turner_-_Slave_Ship_%28Slavers_Throwing_Overboard_the_Dead_and_Dying%2C_Typhoon_Coming_On%29_-_Google_Art_Project.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Joseph_Mallord_William_Turner_-_Slave_Ship_%28Slavers_Throwing_Overboard_the_Dead_and_Dying%2C_Typhoon_Coming_On%29_-_Google_Art_Project.jpg/400px-Joseph_Mallord_William_Turner_-_Slave_Ship.jpg", category:"낭만주의" },
+  { id:39, title:"토성이 아들을 삼키다", titleEn:"Saturn Devouring His Son", artist:"Francisco Goya", year:1823, movement:"낭만주의", origin:"스페인", premium:false, url:"images/full/039_full.jpg", thumb:"images/thumb/039_thumb.jpg", category:"낭만주의" },
+
+  // ── 인상주의 / 표현주의 ──────────────────────────────
+  { id:40, title:"절규", titleEn:"The Scream", artist:"Edvard Munch", year:1893, movement:"표현주의", origin:"노르웨이", premium:false, url:"images/full/040_full.jpg", thumb:"images/thumb/040_thumb.jpg", category:"인상주의" },
+  { id:41, title:"그랑드 자트 섬의 일요일 오후", titleEn:"A Sunday Afternoon", artist:"Georges Seurat", year:1886, movement:"신인상주의", origin:"프랑스", premium:false, url:"images/full/041_full.jpg", thumb:"images/thumb/041_thumb.jpg", category:"인상주의" },
+  { id:42, title:"발레 수업", titleEn:"The Ballet Class", artist:"Edgar Degas", year:1874, movement:"인상주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Degas_-_The_Ballet_Class.jpg/1232px-Degas_-_The_Ballet_Class.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Degas_-_The_Ballet_Class.jpg/400px-Degas_-_The_Ballet_Class.jpg", category:"인상주의" },
+  { id:43, title:"청색 댄서들", titleEn:"Blue Dancers", artist:"Edgar Degas", year:1897, movement:"인상주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Edgar_Degas_-_Blue_Dancers.jpg/956px-Edgar_Degas_-_Blue_Dancers.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Edgar_Degas_-_Blue_Dancers.jpg/400px-Edgar_Degas_-_Blue_Dancers.jpg", category:"인상주의" },
+  { id:44, title:"물랭 드 라 갈레트", titleEn:"Bal du Moulin de la Galette", artist:"Pierre-Auguste Renoir", year:1876, movement:"인상주의", origin:"프랑스", premium:false, url:"images/full/044_full.jpg", thumb:"images/thumb/044_thumb.jpg", category:"인상주의" },
+  { id:45, title:"올랭피아", titleEn:"Olympia", artist:"Édouard Manet", year:1863, movement:"인상주의", origin:"프랑스", premium:false, url:"images/full/045_full.jpg", thumb:"images/thumb/045_thumb.jpg", category:"인상주의" },
+  { id:46, title:"풀밭 위의 점심", titleEn:"Luncheon on the Grass", artist:"Édouard Manet", year:1863, movement:"인상주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Edouard_Manet_-_Le_D%C3%A9jeuner_sur_l%27herbe.jpg/1280px-Edouard_Manet_-_Le_D%C3%A9jeuner_sur_l%27herbe.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Edouard_Manet_-_Le_D%C3%A9jeuner_sur_l%27herbe.jpg/400px-Edouard_Manet_-_Le_D%C3%A9jeuner_sur_l%27herbe.jpg", category:"인상주의" },
+  { id:47, title:"사과와 오렌지", titleEn:"Apples and Oranges", artist:"Paul Cézanne", year:1899, movement:"후기 인상주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/Paul_C%C3%A9zanne_-_Apples_and_Oranges_-_Google_Art_Project.jpg/1205px-Paul_C%C3%A9zanne_-_Apples_and_Oranges_-_Google_Art_Project.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/Paul_C%C3%A9zanne_-_Apples_and_Oranges_-_Google_Art_Project.jpg/400px-Paul_C%C3%A9zanne_-_Apples_and_Oranges_-_Google_Art_Project.jpg", category:"인상주의" },
+  { id:48, title:"카드 놀이하는 사람들", titleEn:"The Card Players", artist:"Paul Cézanne", year:1895, movement:"후기 인상주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Paul_C%C3%A9zanne_-_The_Card_Players_-_Google_Art_Project.jpg/1280px-Paul_C%C3%A9zanne_-_The_Card_Players_-_Google_Art_Project.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Paul_C%C3%A9zanne_-_The_Card_Players_-_Google_Art_Project.jpg/400px-Paul_C%C3%A9zanne_-_The_Card_Players_-_Google_Art_Project.jpg", category:"인상주의" },
+  { id:49, title:"타히티 여인들", titleEn:"Women of Tahiti", artist:"Paul Gauguin", year:1891, movement:"후기 인상주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Paul_Gauguin_-_Two_Women_%28On_the_Beach%29_1891.jpg/1280px-Paul_Gauguin_-_Two_Women_%28On_the_Beach%29_1891.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Paul_Gauguin_-_Two_Women_%28On_the_Beach%29_1891.jpg/400px-Paul_Gauguin_-_Two_Women_%28On_the_Beach%29_1891.jpg", category:"인상주의" },
+  { id:50, title:"우리는 어디서 왔는가", titleEn:"Where Do We Come From?", artist:"Paul Gauguin", year:1898, movement:"후기 인상주의", origin:"프랑스", premium:false, url:"images/full/050_full.jpg", thumb:"images/thumb/050_thumb.jpg", category:"인상주의" },
+
+  // ── 아르누보 (Alphonse Mucha 1860-1939) ─────────────
+  { id:51, title:"지스몽다", titleEn:"Gismonda", artist:"Alphonse Mucha", year:1894, movement:"아르누보", origin:"체코", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Mucha-Gismonda.jpg/564px-Mucha-Gismonda.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Mucha-Gismonda.jpg/400px-Mucha-Gismonda.jpg", category:"아르누보" },
+  { id:52, title:"봄 (사계절)", titleEn:"Spring — The Seasons", artist:"Alphonse Mucha", year:1896, movement:"아르누보", origin:"체코", premium:false, url:"images/full/052_full.jpg", thumb:"images/thumb/052_thumb.jpg", category:"아르누보" },
+  { id:53, title:"여름 (사계절)", titleEn:"Summer — The Seasons", artist:"Alphonse Mucha", year:1896, movement:"아르누보", origin:"체코", premium:false, url:"images/full/053_full.jpg", thumb:"images/thumb/053_thumb.jpg", category:"아르누보" },
+  { id:54, title:"가을 (사계절)", titleEn:"Autumn — The Seasons", artist:"Alphonse Mucha", year:1896, movement:"아르누보", origin:"체코", premium:false, url:"images/full/054_full.jpg", thumb:"images/thumb/054_thumb.jpg", category:"아르누보" },
+  { id:55, title:"겨울 (사계절)", titleEn:"Winter — The Seasons", artist:"Alphonse Mucha", year:1896, movement:"아르누보", origin:"체코", premium:false, url:"images/full/055_full.jpg", thumb:"images/thumb/055_thumb.jpg", category:"아르누보" },
+  { id:56, title:"모아나코 — 몬테카를로", titleEn:"Monaco — Monte Carlo", artist:"Alphonse Mucha", year:1897, movement:"아르누보", origin:"체코", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/Alfons_Mucha_-_1897_-_Monaco_Monte_Carlo.jpg/554px-Alfons_Mucha_-_1897_-_Monaco_Monte_Carlo.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/Alfons_Mucha_-_1897_-_Monaco_Monte_Carlo.jpg/400px-Alfons_Mucha_-_1897_-_Monaco_Monte_Carlo.jpg", category:"아르누보" },
+  { id:57, title:"JOB 담배 포스터", titleEn:"JOB", artist:"Alphonse Mucha", year:1896, movement:"아르누보", origin:"체코", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Alfons_Mucha_-_1896_-_Job_Cigarettes.jpg/552px-Alfons_Mucha_-_1896_-_Job_Cigarettes.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Alfons_Mucha_-_1896_-_Job_Cigarettes.jpg/400px-Alfons_Mucha_-_1896_-_Job_Cigarettes.jpg", category:"아르누보" },
+  { id:58, title:"달의 여인", titleEn:"The Moon", artist:"Alphonse Mucha", year:1902, movement:"아르누보", origin:"체코", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Alphonse_Mucha_-_The_Moon_and_the_Stars_-_The_Moon.jpg/563px-Alphonse_Mucha_-_The_Moon_and_the_Stars_-_The_Moon.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Alphonse_Mucha_-_The_Moon_and_the_Stars_-_The_Moon.jpg/400px-Alphonse_Mucha_-_The_Moon_and_the_Stars_-_The_Moon.jpg", category:"아르누보" },
+
+  // ── 상징주의 / 빈 분리파 ─────────────────────────────
+  { id:59, title:"키스", titleEn:"The Kiss", artist:"Gustav Klimt", year:1908, movement:"상징주의", origin:"오스트리아", premium:false, url:"images/full/059_full.jpg", thumb:"images/thumb/059_thumb.jpg", category:"기타" },
+  { id:60, title:"유디트 I", titleEn:"Judith I", artist:"Gustav Klimt", year:1901, movement:"상징주의", origin:"오스트리아", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/Klimt_Judith.jpg/721px-Klimt_Judith.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/Klimt_Judith.jpg/400px-Klimt_Judith.jpg", category:"기타" },
+  { id:61, title:"아델레 블로흐-바우어 I", titleEn:"Adele Bloch-Bauer I", artist:"Gustav Klimt", year:1907, movement:"상징주의", origin:"오스트리아", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Klimt_Adele_Bloch-Bauer.jpg/895px-Klimt_Adele_Bloch-Bauer.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Klimt_Adele_Bloch-Bauer.jpg/400px-Klimt_Adele_Bloch-Bauer.jpg", category:"기타" },
+  { id:62, title:"생명의 나무", titleEn:"The Tree of Life", artist:"Gustav Klimt", year:1909, movement:"상징주의", origin:"오스트리아", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Gustav_Klimt_-_The_Tree_of_Life%2C_Stoclet_Frieze.jpg/1280px-Gustav_Klimt_-_The_Tree_of_Life%2C_Stoclet_Frieze.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Gustav_Klimt_-_The_Tree_of_Life%2C_Stoclet_Frieze.jpg/400px-Gustav_Klimt_-_The_Tree_of_Life%2C_Stoclet_Frieze.jpg", category:"기타" },
+  { id:63, title:"오필리아", titleEn:"Ophelia", artist:"John Everett Millais", year:1851, movement:"라파엘전파", origin:"영국", premium:false, url:"images/full/063_full.jpg", thumb:"images/thumb/063_thumb.jpg", category:"기타" },
+
+  // ── 칸딘스키 / 클레 — 추상 (저작권 만료) ────────────
+  { id:64, title:"구성 VIII", titleEn:"Composition VIII", artist:"Wassily Kandinsky", year:1923, movement:"추상표현주의", origin:"러시아", premium:false, url:"images/full/064_full.jpg", thumb:"images/thumb/064_thumb.jpg", category:"현대미술" },
+  { id:65, title:"노란색·빨간색·파란색", titleEn:"Yellow-Red-Blue", artist:"Wassily Kandinsky", year:1925, movement:"추상미술", origin:"러시아", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Vassily_Kandinsky%2C_1925_-_Yellow-Red-Blue.jpg/1280px-Vassily_Kandinsky%2C_1925_-_Yellow-Red-Blue.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Vassily_Kandinsky%2C_1925_-_Yellow-Red-Blue.jpg/400px-Vassily_Kandinsky%2C_1925_-_Yellow-Red-Blue.jpg", category:"현대미술" },
+  { id:66, title:"즉흥 27번", titleEn:"Improvisation 27", artist:"Wassily Kandinsky", year:1912, movement:"추상표현주의", origin:"러시아", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Kandinsky_-_Improvisation_27%2C_Garden_of_Love_II.jpg/1280px-Kandinsky_-_Improvisation_27%2C_Garden_of_Love_II.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Kandinsky_-_Improvisation_27%2C_Garden_of_Love_II.jpg/400px-Kandinsky_-_Improvisation_27%2C_Garden_of_Love_II.jpg", category:"현대미술" },
+  { id:67, title:"세네치오 (노인)", titleEn:"Senecio", artist:"Paul Klee", year:1922, movement:"바우하우스", origin:"스위스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Paul_Klee%2C_1922%2C_Senecio.jpg/976px-Paul_Klee%2C_1922%2C_Senecio.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Paul_Klee%2C_1922%2C_Senecio.jpg/400px-Paul_Klee%2C_1922%2C_Senecio.jpg", category:"현대미술" },
+  { id:68, title:"지저귀는 기계", titleEn:"Twittering Machine", artist:"Paul Klee", year:1922, movement:"바우하우스", origin:"스위스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Twittering-machine.jpg/1224px-Twittering-machine.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Twittering-machine.jpg/400px-Twittering-machine.jpg", category:"현대미술" },
+  { id:69, title:"붉은 풍선", titleEn:"Red Balloon", artist:"Paul Klee", year:1922, movement:"바우하우스", origin:"스위스", premium:false, url:"images/full/069_full.jpg", thumb:"images/thumb/069_thumb.jpg", category:"현대미술" },
+
+  // ── 야수파 — 마티스 제거(재단 분쟁 우려), 드랭·블라맹크 대체 ──
+  { id:70, title:"런던 템스강의 다리", titleEn:"The Pool of London", artist:"André Derain", year:1906, movement:"야수파", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Andr%C3%A9_Derain%2C_1906%2C_The_Pool_of_London.jpg/1280px-Andr%C3%A9_Derain%2C_1906%2C_The_Pool_of_London.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Andr%C3%A9_Derain%2C_1906%2C_The_Pool_of_London.jpg/400px-Andr%C3%A9_Derain%2C_1906%2C_The_Pool_of_London.jpg", category:"현대미술" },
+  { id:71, title:"콜리우르 항구", titleEn:"Collioure", artist:"André Derain", year:1905, movement:"야수파", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Andr%C3%A9_Derain%2C_1905%2C_Collioure%2C_la_ville_et_la_mer%2C_oil_on_board%2C_32_x_40_cm%2C_private.jpg/1280px-Andr%C3%A9_Derain%2C_1905%2C_Collioure%2C_la_ville_et_la_mer%2C_oil_on_board%2C_32_x_40_cm%2C_private.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Andr%C3%A9_Derain%2C_1905%2C_Collioure%2C_la_ville_et_la_mer%2C_oil_on_board%2C_32_x_40_cm%2C_private.jpg/400px-Andr%C3%A9_Derain%2C_1905%2C_Collioure%2C_la_ville_et_la_mer%2C_oil_on_board%2C_32_x_40_cm%2C_private.jpg", category:"현대미술" },
+  { id:72, title:"레스탁 풍경", titleEn:"Paysage de l'Estaque", artist:"Maurice de Vlaminck", year:1905, movement:"야수파", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Vlaminck%2C_Maurice_de_-_The_River_-_c._1910.jpg/1280px-Vlaminck%2C_Maurice_de_-_The_River_-_c._1910.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Vlaminck%2C_Maurice_de_-_The_River_-_c._1910.jpg/400px-Vlaminck%2C_Maurice_de_-_The_River_-_c._1910.jpg", category:"현대미술" },
+
+  // ── 큐비즘 / 20세기 초 ───────────────────────────────
+  // id:73 피카소 「아비뇽의 처녀들」 — 2043년까지 저작권 보호, 제거됨
+  { id:74, title:"아메리카 고딕", titleEn:"American Gothic", artist:"Grant Wood", year:1930, movement:"지역주의", origin:"미국", premium:false, url:"images/full/074_full.jpg", thumb:"images/thumb/074_thumb.jpg", category:"현대미술" },
+  { id:75, title:"워싱턴의 도강", titleEn:"Washington Crossing the Delaware", artist:"Emanuel Leutze", year:1851, movement:"역사화", origin:"미국", premium:false, url:"images/full/075_full.jpg", thumb:"images/thumb/075_thumb.jpg", category:"현대미술" },
+  { id:76, title:"마담 X", titleEn:"Madame X", artist:"John Singer Sargent", year:1884, movement:"사실주의", origin:"미국", premium:false, url:"images/full/076_full.jpg", thumb:"images/thumb/076_thumb.jpg", category:"기타" },
+
+  // ── 사실주의 / 19세기 ────────────────────────────────
+  { id:77, title:"이삭 줍는 여인들", titleEn:"The Gleaners", artist:"Jean-François Millet", year:1857, movement:"사실주의", origin:"프랑스", premium:false, url:"images/full/077_full.jpg", thumb:"images/thumb/077_thumb.jpg", category:"기타" },
+  { id:78, title:"그네", titleEn:"The Swing", artist:"Jean-Honoré Fragonard", year:1767, movement:"로코코", origin:"프랑스", premium:false, url:"images/full/078_full.jpg", thumb:"images/thumb/078_thumb.jpg", category:"기타" },
+  { id:79, title:"그랑 오달리스크", titleEn:"Grande Odalisque", artist:"Jean-Auguste-Dominique Ingres", year:1814, movement:"신고전주의", origin:"프랑스", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Jean-Auguste-Dominique_Ingres%2C_La_Grande_Odalisque%2C_1814.jpg/1280px-Jean-Auguste-Dominique_Ingres%2C_La_Grande_Odalisque%2C_1814.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Jean-Auguste-Dominique_Ingres%2C_La_Grande_Odalisque%2C_1814.jpg/400px-Jean-Auguste-Dominique_Ingres%2C_La_Grande_Odalisque%2C_1814.jpg", category:"기타" },
+
+  // ── 동양화 — 일본 우키요에 (호쿠사이 · 히로시게) ──────
+
+  // ── 동양화 — 조선 회화 ───────────────────────────────
+  { id:89, title:"인왕제색도", titleEn:"Clearing after Rain on Mt. Inwang", artist:"정선 (鄭敾)", year:1751, movement:"진경산수화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg/1280px-Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg/600px-Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg", category:"동양화" },
+  { id:90, title:"금강전도", titleEn:"Diamond Mountains", artist:"정선 (鄭敾)", year:1734, movement:"진경산수화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/JeongSeon-GeumgangJeondo.jpg/932px-JeongSeon-GeumgangJeondo.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/JeongSeon-GeumgangJeondo.jpg/600px-JeongSeon-GeumgangJeondo.jpg", category:"동양화" },
+  { id:91, title:"미인도", titleEn:"Portrait of a Beauty", artist:"신윤복 (申潤福)", year:1805, movement:"풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Shin_Yun-bok-Portrait_of_a_Beauty.jpg/549px-Shin_Yun-bok-Portrait_of_a_Beauty.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Shin_Yun-bok-Portrait_of_a_Beauty.jpg/400px-Shin_Yun-bok-Portrait_of_a_Beauty.jpg", category:"동양화" },
+  { id:92, title:"씨름", titleEn:"Ssireum (Korean Wrestling)", artist:"김홍도 (金弘道)", year:1778, movement:"풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Kim_Hongdo-Ssireum.jpg/952px-Kim_Hongdo-Ssireum.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Kim_Hongdo-Ssireum.jpg/600px-Kim_Hongdo-Ssireum.jpg", category:"동양화" },
+  { id:93, title:"단원 풍속도첩 — 서당", titleEn:"Village School", artist:"김홍도 (金弘道)", year:1778, movement:"풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Kim_Hongdo-Village_school.jpg/836px-Kim_Hongdo-Village_school.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Kim_Hongdo-Village_school.jpg/600px-Kim_Hongdo-Village_school.jpg", category:"동양화" },
+  { id:94, title:"월하정인", titleEn:"Lovers Meeting by Moonlight", artist:"신윤복 (申潤福)", year:1805, movement:"풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Hyewon-Wolha_jeong_in.jpg/718px-Hyewon-Wolha_jeong_in.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Hyewon-Wolha_jeong_in.jpg/600px-Hyewon-Wolha_jeong_in.jpg", category:"동양화" },
+  { id:95, title:"단오풍정", titleEn:"Festival of Dano", artist:"신윤복 (申潤福)", year:1805, movement:"풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Hyewon-Dano_pungjeong.jpg/1096px-Hyewon-Dano_pungjeong.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Hyewon-Dano_pungjeong.jpg/800px-Hyewon-Dano_pungjeong.jpg", category:"동양화" },
+  { id:96, title:"세한도", titleEn:"Suseodo (Winter Landscape)", artist:"김정희 (金正喜)", year:1844, movement:"문인화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Kim_Jeong-Hui-Suseodo.jpg/1280px-Kim_Jeong-Hui-Suseodo.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Kim_Jeong-Hui-Suseodo.jpg/800px-Kim_Jeong-Hui-Suseodo.jpg", category:"동양화" },
+
+  // ── 동양화 — 중국 산수화 ─────────────────────────────
+  { id:97, title:"청명상하도 (부분)", titleEn:"Along the River During Qingming Festival", artist:"장택단 (張擇端)", year:1120, movement:"송대 회화", origin:"중국", premium:false, url:"images/full/097_full.jpg", thumb:"images/thumb/097_thumb.jpg", category:"동양화" },
+  { id:98, title:"부춘산거도", titleEn:"Dwelling in the Fuchun Mountains", artist:"황공망 (黃公望)", year:1350, movement:"원대 산수화", origin:"중국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Dwelling_in_the_Fuchun_Mountains.jpg/1280px-Dwelling_in_the_Fuchun_Mountains.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Dwelling_in_the_Fuchun_Mountains.jpg/800px-Dwelling_in_the_Fuchun_Mountains.jpg", category:"동양화" },
+  { id:99, title:"묵죽도", titleEn:"Ink Bamboo", artist:"정판교 (鄭板橋)", year:1750, movement:"청대 회화", origin:"중국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Bamboo_painting_Zheng_Xie.jpg/534px-Bamboo_painting_Zheng_Xie.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Bamboo_painting_Zheng_Xie.jpg/400px-Bamboo_painting_Zheng_Xie.jpg", category:"동양화" },
+  { id:100, title:"낙신부도 (부분)", titleEn:"Nymph of the Luo River", artist:"고개지 (顧愷之) 모사", year:400, movement:"동진 회화", origin:"중국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Gu_Kaizhi_Luoshenfu_Freer.jpg/1280px-Gu_Kaizhi_Luoshenfu_Freer.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Gu_Kaizhi_Luoshenfu_Freer.jpg/800px-Gu_Kaizhi_Luoshenfu_Freer.jpg", category:"동양화" },
+
+  // ── 한국 민화 — 호랑이 (Wikimedia Commons Public Domain) ──
+  { id:101, title:"까치호랑이 (호작도)", titleEn:"Magpie and Tiger (Hojakdo)", artist:"작자 미상 (조선)", year:1850, movement:"민화", origin:"조선", premium:false, url:"images/full/101_full.jpg", thumb:"images/thumb/101_thumb.jpg", category:"동양화" },
+  { id:102, title:"민화 호랑이", titleEn:"Minhwa Tiger", artist:"작자 미상 (조선)", year:1800, movement:"민화", origin:"조선", premium:false, url:"images/full/102_full.jpg", thumb:"images/thumb/102_thumb.jpg", category:"동양화" },
+  { id:103, title:"소나무 아래 호랑이 두 마리", titleEn:"Two Tigers under a Pine Tree", artist:"작자 미상 (조선)", year:1850, movement:"민화", origin:"조선", premium:false, url:"images/full/103_full.jpg", thumb:"images/thumb/103_thumb.jpg", category:"동양화" },
+  { id:104, title:"호작도 (까치와 호랑이)", titleEn:"Tiger and Magpies (Hojakdo)", artist:"작자 미상 (조선)", year:1850, movement:"민화", origin:"조선", premium:false, url:"images/full/104_full.jpg", thumb:"images/thumb/104_thumb.jpg", category:"동양화" },
+  { id:105, title:"담배 피우는 호랑이", titleEn:"Tiger Smoking Pipe", artist:"작자 미상 (조선)", year:1800, movement:"민화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/Joseon-Minhwa-Tiger_smoking_pipe-01.jpg/619px-Joseon-Minhwa-Tiger_smoking_pipe-01.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/Joseon-Minhwa-Tiger_smoking_pipe-01.jpg/400px-Joseon-Minhwa-Tiger_smoking_pipe-01.jpg", category:"동양화" },
+  { id:106, title:"호랑이 가족도", titleEn:"Family of Tigers", artist:"작자 미상 (조선)", year:1880, movement:"민화", origin:"조선", premium:false, url:"images/full/106_full.jpg", thumb:"images/thumb/106_thumb.jpg", category:"동양화" },
+  { id:107, title:"호랑이 경배도", titleEn:"Honoring the Tiger", artist:"작자 미상 (조선)", year:1800, movement:"민화", origin:"조선", premium:false, url:"images/full/107_full.jpg", thumb:"images/thumb/107_thumb.jpg", category:"동양화" },
+
+  // ── 이중섭 (1916~1956, 2026년 저작권 만료 — 한국 저작권법 사후 70년) ──────────────────
+  // 출처: Wikimedia Commons Public Domain (사후 70년 초과)
+  { id:108, title:"흰 소", titleEn:"White Bull", artist:"이중섭 (李仲燮)", year:1954, movement:"한국 근현대", origin:"대한민국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Lee_Jungseop-White_Bull.jpg/1280px-Lee_Jungseop-White_Bull.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Lee_Jungseop-White_Bull.jpg/600px-Lee_Jungseop-White_Bull.jpg", category:"동양화", source:"Wikimedia CC-PD" },
+  { id:109, title:"길 떠나는 가족", titleEn:"Family on the Road", artist:"이중섭 (李仲燮)", year:1954, movement:"한국 근현대", origin:"대한민국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Lee_Jungseop-Family_Going_Out.jpg/1280px-Lee_Jungseop-Family_Going_Out.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Lee_Jungseop-Family_Going_Out.jpg/600px-Lee_Jungseop-Family_Going_Out.jpg", category:"동양화", source:"Wikimedia CC-PD" },
+
+  // ── 국립중앙박물관 공공누리 제1유형 (출처표시, 상업적 이용 가능) ──────────────────────
+  // 출처: 국립중앙박물관 (museum.go.kr), 공공누리 제1유형
+  { id:110, title:"청자 상감 운학문 매병", titleEn:"Celadon Prunus Vase with Inlaid Crane Design", artist:"작자 미상 (고려)", year:1150, movement:"고려 청자", origin:"고려", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Korean_celadon_vase_with_inlaid_crane_design.jpg/800px-Korean_celadon_vase_with_inlaid_crane_design.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Korean_celadon_vase_with_inlaid_crane_design.jpg/400px-Korean_celadon_vase_with_inlaid_crane_design.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:111, title:"금동 미륵보살 반가 사유상", titleEn:"Gilt-bronze Maitreya in Meditation", artist:"작자 미상 (삼국)", year:600, movement:"삼국시대 불교 조각", origin:"삼국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Pensive_bodhisattva_Korea.jpg/600px-Pensive_bodhisattva_Korea.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Pensive_bodhisattva_Korea.jpg/400px-Pensive_bodhisattva_Korea.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:112, title:"단원 씨름 (풍속화첩)", titleEn:"Ssireum (Wrestling)", artist:"김홍도 (金弘道)", year:1778, movement:"조선 풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Kim_Hongdo-Ssireum.jpg/952px-Kim_Hongdo-Ssireum.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Kim_Hongdo-Ssireum.jpg/600px-Kim_Hongdo-Ssireum.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:113, title:"신윤복 미인도", titleEn:"Portrait of a Beauty", artist:"신윤복 (申潤福)", year:1800, movement:"조선 풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Shin_Yun-bok-Portrait_of_a_Beauty.jpg/549px-Shin_Yun-bok-Portrait_of_a_Beauty.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Shin_Yun-bok-Portrait_of_a_Beauty.jpg/400px-Shin_Yun-bok-Portrait_of_a_Beauty.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:114, title:"천마도 (천마총 장니)", titleEn:"Cheonmado (Flying Horse)", artist:"작자 미상 (신라)", year:500, movement:"신라 고분 미술", origin:"신라", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Heavenly_Horse%2C_Cheonmachong_Tomb.jpg/800px-Heavenly_Horse%2C_Cheonmachong_Tomb.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Heavenly_Horse%2C_Cheonmachong_Tomb.jpg/400px-Heavenly_Horse%2C_Cheonmachong_Tomb.jpg", category:"동양화", source:"국립중앙박물관" },
+  { id:115, title:"반구대 암각화 (탁본)", titleEn:"Bangudae Petroglyphs Rubbing", artist:"작자 미상 (선사)", year:-5000, movement:"선사 암각화", origin:"한반도", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Bangudae_petroglyph.jpg/1280px-Bangudae_petroglyph.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Bangudae_petroglyph.jpg/400px-Bangudae_petroglyph.jpg", category:"동양화", source:"국립중앙박물관" },
+];
+
+// ── 다중 API 소스 설정 ──────────────────────────────────
+// 1) Met Museum — 공개도메인 회화 ID 풀 (검증된 ID)
+const metObjectIds = [
+  436535,436532,436530,459055,459054,437984,437133,437654,437645,
+  435882,436105,436106,459056,459053,437400,437699,437246,437655,
+  10563,11417,11418,334198,334199,336327,336323,336321,14981,14982,
+  15572,15574,15575,436944,436943,437980,437979,437978,437977,
+  437895,437896,437897,438722,438723,438724,438725,438726,
+  39733,39734,39735,40148,40149,40150,45434,45435,45436,
+  62309,62310,62311,62312,55363,55364,55365,55366,55367,
+  // 추가 검증 ID
+  459080,459081,459082,436120,436121,436122,437750,437751,
+  11320,11321,11322,11323,60521,60522,60523,60524,60525,
+];
+
+// 2) Art Institute of Chicago — CC0 (키 불필요)
+const aicArtworkIds = [
+  27992, 28560, 14572, 16487, 14655, 20684, 24645, 16362,
+  97916, 97910, 99539, 100829, 148412, 151424, 185905, 185894,
+  75644, 82511, 86340, 86385, 62371, 66039, 66434, 79379,
+  111401, 111628, 111610, 116325, 117270, 117271, 117272,
+];
+
+// 3) Cleveland Museum of Art — CC0 (키 불필요)
+const clevelandIds = [
+  140751, 140752, 140753, 140754, 140755,
+  126520, 126521, 126522, 126523, 126524,
+  104686, 104687, 104688, 104689, 104690,
+
+  // ── 추가 작품 (DB 누락 보완) ────────────────────────────────────────────
+
+  // id:60 유디트 I (Klimt) — id:60이 이미 있는지 확인 후
+  // id:65 노란색·빨간색·파란색 (Kandinsky) — 확인 필요
+
+  // 비 증기 속도 (Turner) — Wikimedia PD
+  { id:116, title:"비, 증기, 속도", titleEn:"Rain, Steam and Speed", artist:"J.M.W. Turner", year:1844, movement:"낭만주의", origin:"영국", premium:false, url:"images/full/116_full.jpg", thumb:"images/thumb/116_thumb.jpg", category:"낭만주의" },
+
+  // Magnolias on light blue velvet cloth — Met Museum CC0
+  { id:117, title:"Magnolias on Light Blue Velvet Cloth", titleEn:"Magnolias on Light Blue Velvet Cloth", artist:"Martin Johnson Heade", year:1885, movement:"미국 사실주의", origin:"미국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Martin_Johnson_Heade_-_Magnolias_on_Blue_Velvet_Cloth.jpg/1280px-Martin_Johnson_Heade_-_Magnolias_on_Blue_Velvet_Cloth.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Martin_Johnson_Heade_-_Magnolias_on_Blue_Velvet_Cloth.jpg/400px-Martin_Johnson_Heade_-_Magnolias_on_Blue_Velvet_Cloth.jpg", category:"기타" },
+
+  // Plate — Met Museum CC0 (Iznik 도자기)
+  { id:118, title:"접시 (이즈니크 도자)", titleEn:"Plate (Iznik Ware)", artist:"작자 미상 (오스만)", year:1560, movement:"이슬람 도예", origin:"터키", premium:false, url:"https://images.metmuseum.org/CRDImages/is/original/DP252017.jpg", thumb:"https://images.metmuseum.org/CRDImages/is/web-large/DP252017.jpg", category:"기타" },
+
+  // Icon with the Virgin and Child — Met Museum CC0
+  { id:119, title:"성모자 이콘", titleEn:"Icon with the Virgin and Child", artist:"작자 미상 (비잔틴)", year:1100, movement:"비잔틴 미술", origin:"비잔틴", premium:false, url:"images/full/119_full.jpg", thumb:"images/thumb/119_thumb.jpg", category:"기타" },
+
+  // Head of a Male Deity — Met Museum CC0 (Southeast Asian)
+  { id:120, title:"신상 두상 (크메르)", titleEn:"Head of a Male Deity (Deva)", artist:"작자 미상 (크메르)", year:900, movement:"크메르 조각", origin:"캄보디아", premium:false, url:"images/full/120_full.jpg", thumb:"images/thumb/120_thumb.jpg", category:"기타" },
+
+  // The Millinery Shop (Degas) — Met Museum CC0
+  { id:121, title:"모자 가게", titleEn:"The Millinery Shop", artist:"Edgar Degas", year:1879, movement:"인상주의", origin:"프랑스", premium:false, url:"images/full/121_full.jpg", thumb:"images/thumb/121_thumb.jpg", category:"인상주의" },
+];
+
+let artworks = [...localArtworks];
+let metArtworkCache = [];
+let aicArtworkCache = [];
+let clevelandArtworkCache = [];
+let isLoadingMet = false;
+let isLoadingAic = false;
+let isLoadingCleveland = false;
+let randomOrder = [];
+let randomPos = 0;
+let isShuffleMode = true; // 기본: 랜덤
+let sequentialIndex = 0;  // 순서 재생 시 사용
+
+// ── STATE ──
+let currentIndex = 0;
+let paused = false;
+let intervalMs = 30000;
+let timerVal = 0;
+let timerMax = 30;
+let timerTick = null;
+let currentFilter = '전체';
+let isLoggedIn = false;
+let isPremium = false;
+let selectedPlan = 'year';
+
+// 랜덤 순서 생성
+function buildRandomOrder() {
+  // 전체 작품을 섞어서 한 사이클에 모두 표시
+  randomOrder = artworks.map((_, i) => i);
+  // Fisher-Yates 셔플
+  for (let i = randomOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [randomOrder[i], randomOrder[j]] = [randomOrder[j], randomOrder[i]];
+  }
+  randomPos = 0;
+  console.log(`[셔플] ${randomOrder.length}개 작품 새 순서 생성`);
+}
+
+function nextRandomIndex() {
+  // 한 사이클 완료 시 새로 섞어서 재시작 (모든 작품 균등 노출)
+  if (randomPos >= randomOrder.length) {
+    buildRandomOrder();
+    console.log('[셔플] 전체 사이클 완료 → 새 순서로 재시작');
+  }
+  return randomOrder[randomPos++];
+}
+
+// ── Met Museum API ── 동적 로딩 (재시도 + 타임아웃 적용)
+
+// 방안3: 타임아웃을 적용한 fetch 래퍼
+async function fetchWithTimeout(url, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    return res;
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error(`Timeout after ${timeoutMs}ms: ${url}`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// 방안2: 지수 백오프 재시도 래퍼
+async function fetchWithRetry(url, { retries = 3, timeoutMs = 5000, baseDelay = 1000 } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url, timeoutMs);
+      return res;
+    } catch (e) {
+      lastError = e;
+      const isLastAttempt = attempt === retries;
+      if (isLastAttempt) break;
+      // 지수 백오프: 1초 → 2초 → 4초 (jitter 포함)
+      const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 300;
+      console.info(`Met API: 재시도 ${attempt}/${retries - 1} (${Math.round(delay)}ms 후) — ${e.message}`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw lastError;
+}
+
+async function fetchMetArtwork() {
+  if (isLoadingMet) return null;
+  isLoadingMet = true;
+  try {
+    const shuffled = [...metObjectIds].sort(() => Math.random() - 0.5);
+    for (const objId of shuffled.slice(0, 5)) {
+      if (metArtworkCache.find(a => a.metId === objId)) continue;
+      let res;
+      try {
+        res = await fetchWithRetry(
+          `https://collectionapi.metmuseum.org/public/collection/v1/objects/${objId}`,
+          { retries: 3, timeoutMs: 5000, baseDelay: 1000 }
+        );
+      } catch (e) {
+        // 이 ID는 포기하고 다음 ID 시도
+        console.info(`Met API: object ${objId} 건너뜀 — ${e.message}`);
+        continue;
+      }
+      if (!res.ok) continue;
+      const d = await res.json();
+      if (!d.primaryImageSmall || !d.isPublicDomain) continue;
+      const art = {
+        id: 10000 + objId,
+        metId: objId,
+        title: d.title || 'Untitled',
+        titleEn: d.title || 'Untitled',
+        artist: d.artistDisplayName || 'Unknown Artist',
+        year: parseInt(d.objectEndDate) || parseInt(d.objectDate) || 0,
+        movement: d.period || d.classification || '미분류',
+        origin: d.country || d.culture || '미상',
+        premium: false,
+        url: d.primaryImage || d.primaryImageSmall,
+        thumb: d.primaryImageSmall,
+        category: classifyMet(d.classification),
+        source: 'Met Museum',
+      };
+      metArtworkCache.push(art);
+      if (!artworks.find(a => a.id === art.id)) {
+        artworks.push(art);
+        buildRandomOrder();
+      }
+      isLoadingMet = false;
+      return art;
+    }
+  } catch (e) {
+    console.info(`Met API: 전체 실패 — 로컬 작품으로 폴백 (${e.message})`);
+  }
+  isLoadingMet = false;
+  return null;
+}
+
+function classifyMet(classification) {
+  if (!classification) return '기타';
+  const c = classification.toLowerCase();
+  if (c.includes('painting')) return '현대미술';
+  if (c.includes('print') || c.includes('woodcut') || c.includes('japan') || c.includes('korea') || c.includes('china')) return '동양화';
+  if (c.includes('drawing')) return '기타';
+  return '기타';
+}
+
+// ── Art Institute of Chicago API (CC0, 키 불필요) ──
+async function fetchAicArtwork() {
+  if (isLoadingAic) return null;
+  isLoadingAic = true;
+  try {
+    const shuffled = [...aicArtworkIds].sort(() => Math.random() - 0.5);
+    for (const artId of shuffled.slice(0, 5)) {
+      if (aicArtworkCache.find(a => a.aicId === artId)) continue;
+      let res;
+      try {
+        res = await fetchWithRetry(
+          `https://api.artic.edu/api/v1/artworks/${artId}?fields=id,title,artist_display,date_end,style_title,place_of_origin,image_id,is_public_domain`,
+          { retries: 2, timeoutMs: 6000, baseDelay: 800 }
+        );
+      } catch (e) { console.info(`AIC API: ${artId} 건너뜀`); continue; }
+      if (!res.ok) continue;
+      const { data: d } = await res.json();
+      if (!d.image_id || !d.is_public_domain) continue;
+      const imgBase = 'https://www.artic.edu/iiif/2';
+      const art = {
+        id: 20000 + artId,
+        aicId: artId,
+        title: d.title || 'Untitled',
+        titleEn: d.title || 'Untitled',
+        artist: d.artist_display ? d.artist_display.split('\n')[0] : 'Unknown',
+        year: d.date_end || 0,
+        movement: d.style_title || '미분류',
+        origin: d.place_of_origin || '미상',
+        premium: false,
+        url: `${imgBase}/${d.image_id}/full/1280,/0/default.jpg`,
+        thumb: `${imgBase}/${d.image_id}/full/400,/0/default.jpg`,
+        category: '현대미술',
+        source: 'Art Institute Chicago',
+      };
+      aicArtworkCache.push(art);
+      if (!artworks.find(a => a.id === art.id)) {
+        artworks.push(art);
+        buildRandomOrder();
+      }
+      isLoadingAic = false;
+      return art;
+    }
+  } catch (e) { console.info(`AIC API 전체 실패: ${e.message}`); }
+  isLoadingAic = false;
+  return null;
+}
+
+// ── Cleveland Museum of Art API (CC0, 키 불필요) ──
+async function fetchClevelandArtwork() {
+  if (isLoadingCleveland) return null;
+  isLoadingCleveland = true;
+  try {
+    const shuffled = [...clevelandIds].sort(() => Math.random() - 0.5);
+    for (const artId of shuffled.slice(0, 5)) {
+      if (clevelandArtworkCache.find(a => a.clevId === artId)) continue;
+      let res;
+      try {
+        res = await fetchWithRetry(
+          `https://openaccess-api.clevelandart.org/api/artworks/${artId}`,
+          { retries: 2, timeoutMs: 6000, baseDelay: 800 }
+        );
+      } catch (e) { console.info(`Cleveland API: ${artId} 건너뜀`); continue; }
+      if (!res.ok) continue;
+      const { data: d } = await res.json();
+      if (!d.images?.web?.url || d.share_license_status !== 'CC0') continue;
+      const art = {
+        id: 30000 + artId,
+        clevId: artId,
+        title: d.title || 'Untitled',
+        titleEn: d.title || 'Untitled',
+        artist: d.creators?.[0]?.description || 'Unknown',
+        year: d.creation_date_earliest || 0,
+        movement: d.style || '미분류',
+        origin: d.culture?.join(', ') || '미상',
+        premium: false,
+        url: d.images.web.url,
+        thumb: d.images.web.url,
+        category: '현대미술',
+        source: 'Cleveland Museum',
+      };
+      clevelandArtworkCache.push(art);
+      if (!artworks.find(a => a.id === art.id)) {
+        artworks.push(art);
+        buildRandomOrder();
+      }
+      isLoadingCleveland = false;
+      return art;
+    }
+  } catch (e) { console.info(`Cleveland API 전체 실패: ${e.message}`); }
+  isLoadingCleveland = false;
+  return null;
+}
+
+// ── 전체 소스 백그라운드 프리패치 ──
+function prefetchAllSources(count = 3) {
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => fetchMetArtwork(),       i * 1200);
+    setTimeout(() => fetchAicArtwork(),       i * 1200 + 400);
+    setTimeout(() => fetchClevelandArtwork(), i * 1200 + 800);
+  }
+  // DB 상태 표시 업데이트
+  setTimeout(() => {
+    const el = document.getElementById('dbStatus');
+    if (el) el.textContent = `● 로컬 ${artworks.length}개 로드됨`;
+  }, 500);
+  setTimeout(() => {
+    const el = document.getElementById('dbStatus');
+    if (el) el.textContent = `● ${artworks.length}개 작품 연결됨`;
+    renderGallery();
+    renderFilters();
+  }, 8000);
+}
+
+// ── 셔플 모드 토글 ──
+function toggleShuffle() {
+  isShuffleMode = !isShuffleMode;
+  const btn = document.getElementById('shuffleToggle');
+  btn.classList.toggle('on', isShuffleMode);
+  if (isShuffleMode) {
+    buildRandomOrder();
+    showToast('🔀 랜덤 전환 켜짐', 'gold');
+  } else {
+    sequentialIndex = currentIndex;
+    showToast('▶ 순서대로 전환 켜짐', '');
+  }
+}
+
+// ── LOADING ──
+window.addEventListener('load', () => {
+  const bar = document.getElementById('loadBar');
+  let p = 0;
+  const iv = setInterval(() => {
+    p += Math.random() * 18;
+    if (p >= 100) { p = 100; clearInterval(iv); setTimeout(() => {
+      document.getElementById('loadingScreen').classList.add('hidden');
+      initApp();
+    }, 400); }
+    bar.style.width = p + '%';
+  }, 80);
+});
+
+function initApp() {
+  buildRandomOrder();
+  renderGallery();
+  renderFilters();
+  loadArtwork(currentIndex);
+  startTimer();
+  // 2초 후 백그라운드에서 모든 API 소스 프리패치
+  setTimeout(() => prefetchAllSources(4), 2000);
+}
+
+// ── ARTWORK DISPLAY (비율 유지 + 외곽 색상 블러 배경) ──
+
+// 이미지 로드 검증 + 실패 시 다음 작품으로 자동 skip
+// ── 이미지 로딩 유틸리티 ──────────────────────────────────────────
+let _loadDepth = 0;
+let _isLoading = false; // 동시 로딩 방지 플래그
+
+// 4K UHD 최대 해상도 제한 — 초과 시 Canvas로 다운스케일
+const MAX_W = 3840, MAX_H = 2160;
+
+function limitTo4K(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.onload = () => {
+      // 4K 이하면 그대로 사용
+      if (img.naturalWidth <= MAX_W && img.naturalHeight <= MAX_H) {
+        resolve(url);
+        return;
+      }
+      // 4K 초과 시 Canvas로 다운스케일
+      const ratio = Math.min(MAX_W / img.naturalWidth, MAX_H / img.naturalHeight);
+      const w = Math.round(img.naturalWidth  * ratio);
+      const h = Math.round(img.naturalHeight * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      console.log(`[4K] 다운스케일: ${img.naturalWidth}×${img.naturalHeight} → ${w}×${h}`);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = () => resolve(url); // 실패 시 원본 그대로
+    img.src = url;
+  });
+}
+
+function preloadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    const t = setTimeout(() => reject(new Error('timeout')), 12000);
+    img.onload  = () => { clearTimeout(t); resolve(url); };
+    img.onerror = () => { clearTimeout(t); reject(new Error('load_error')); };
+    img.src = url;
+  });
+}
+
+function loadArtwork(idx, animate = true) {
+  if (_isLoading) return; // 중복 호출 방지
+  const art = artworks[idx];
+  if (!art) return;
+
+  _isLoading = true;
+  const bgBlur = document.getElementById('bg-blur');
+  const bgImg  = document.getElementById('bg-image');
+
+  // 이미지 완전 로드 후 fade-in (깨진 이미지 방지)
+  preloadImage(art.url)
+    .then(url => limitTo4K(url))
+    .then(url => {
+      _loadDepth = 0;
+      _isLoading = false;
+
+      if (animate) {
+        // 1) 현재 이미지 fade out
+        bgBlur.style.transition = 'opacity 0.35s ease';
+        bgImg.style.transition  = 'opacity 0.35s ease';
+        bgBlur.style.opacity = 0;
+        bgImg.style.opacity  = 0;
+        setTimeout(() => {
+          // 2) 새 이미지 세팅
+          bgBlur.style.backgroundImage = `url(${url})`;
+          bgImg.style.backgroundImage  = `url(${url})`;
+          // 3) fade in
+          bgBlur.style.transition = 'opacity 1.0s ease';
+          bgImg.style.transition  = 'opacity 1.0s ease';
+          bgBlur.style.opacity = 1;
+          bgImg.style.opacity  = 1;
+        }, 370);
+      } else {
+        bgBlur.style.backgroundImage = `url(${url})`;
+        bgImg.style.backgroundImage  = `url(${url})`;
+        bgBlur.style.opacity = 1;
+        bgImg.style.opacity  = 1;
+      }
+
+      // 작품 정보 업데이트
+      document.getElementById('artTitle').textContent  = art.title;
+      document.getElementById('artArtist').textContent = art.artist;
+      document.getElementById('artMeta').textContent   =
+        `${art.year > 0 ? art.year : '연도미상'} · ${art.movement} · ${art.origin}`;
+      const badge = document.getElementById('artBadge');
+      badge.textContent = '✦ FREE';
+      badge.className   = 'artwork-badge free';
+      const info = document.getElementById('artworkInfo');
+      info.style.animation = 'none';
+      info.offsetHeight;
+      info.style.animation = 'slideUp 0.8s ease forwards';
+
+      if (metArtworkCache.length + aicArtworkCache.length + clevelandArtworkCache.length < 15) {
+        prefetchAllSources(1);
+      }
+    })
+    .catch((err) => {
+      _isLoading = false;
+      _loadDepth++;
+      console.warn(`[이미지 실패 ${_loadDepth}] ${art.title} — ${err.message}`);
+      if (_loadDepth >= 10) {
+        _loadDepth = 0;
+        showToast('이미지를 불러올 수 없습니다.', '');
+        return;
+      }
+      const next = isShuffleMode ? nextRandomIndex() : (sequentialIndex + 1) % artworks.length;
+      currentIndex = next;
+      setTimeout(() => loadArtwork(currentIndex, animate), 300);
+    });
+}
+
+function nextArt() {
+  if (isShuffleMode) {
+    currentIndex = nextRandomIndex();
+  } else {
+    sequentialIndex = (sequentialIndex + 1) % artworks.length;
+    currentIndex = sequentialIndex;
+  }
+  loadArtwork(currentIndex);
+  resetTimer();
+}
+
+function prevArt() {
+  if (isShuffleMode) {
+    randomPos = Math.max(0, randomPos - 2);
+    currentIndex = nextRandomIndex();
+  } else {
+    sequentialIndex = (sequentialIndex - 1 + artworks.length) % artworks.length;
+    currentIndex = sequentialIndex;
+  }
+  loadArtwork(currentIndex);
+  resetTimer();
+}
+
+// ── TIMER ──
+function startTimer() {
+  clearInterval(timerTick);
+  timerVal = 0;
+  timerMax = intervalMs / 1000;
+  updateTimerRing();
+  timerTick = setInterval(() => {
+    if (paused) return;
+    timerVal++;
+    updateTimerRing();
+    if (timerVal >= timerMax) {
+      nextArt();
+    }
+  }, 1000);
+}
+
+function resetTimer() {
+  timerVal = 0;
+  updateTimerRing();
+}
+
+function updateTimerRing() {
+  const circle = document.getElementById('timerCircle');
+  const circumference = 150.8;
+  const progress = timerVal / timerMax;
+  circle.style.strokeDashoffset = circumference * (1 - progress);
+}
+
+function togglePause() {
+  paused = !paused;
+  document.getElementById('timerIcon').textContent = paused ? '▶' : '⏸';
+  showToast(paused ? '일시정지' : '재생 중', 'gold');
+}
+
+function toggleAuto() {
+  const t = document.getElementById('autoToggle');
+  t.classList.toggle('on');
+  paused = !t.classList.contains('on');
+  document.getElementById('timerIcon').textContent = paused ? '▶' : '⏸';
+}
+
+function setInterval_() {
+  intervalMs = parseInt(document.getElementById('intervalSelect').value) * 1000;
+  startTimer();
+  showToast(`전환 간격: ${document.getElementById('intervalSelect').options[document.getElementById('intervalSelect').selectedIndex].text}`, 'gold');
+}
+
+// ── GALLERY ──
+const categories = ['전체', '인상주의', '르네상스', '바로크', '낭만주의', '기타'];
+
+function renderFilters() {
+  const categories = ['전체','인상주의','르네상스','바로크','낭만주의','동양화','아르누보','현대미술','기타'];
+  const bar = document.getElementById('filterBar');
+  bar.innerHTML = categories.map(c =>
+    `<button class="filter-chip ${c==='전체'?'active':''}" onclick="filterGallery('${c}',this)">${c}</button>`
+  ).join('');
+}
+
+function filterGallery(cat, btn) {
+  currentFilter = cat;
+  document.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderGallery();
+}
+
+function renderGallery() {
+  const filtered = currentFilter === '전체' ? artworks : artworks.filter(a => a.category === currentFilter);
+  const totalApi = metObjectIds.length + aicArtworkIds.length + clevelandIds.length;
+  document.getElementById('galleryCount').textContent =
+    `로컬 ${artworks.length}개 · API ${totalApi}+ 무제한`;
+  const grid = document.getElementById('galleryGrid');
+  grid.innerHTML = filtered.map(art => `
+    <div class="art-card" onclick="handleArtClick(${art.id})">
+      <div class="art-card-img" id="card-img-${art.id}" style="background-image:url(${art.thumb})">
+        <div class="art-card-overlay">
+          ${art.premium && !isPremium
+            ? `<button class="overlay-btn lock" onclick="event.stopPropagation();openPaymentModal()">🔒 프리미엄</button>`
+            : `<button class="overlay-btn" onclick="event.stopPropagation();setAsCurrent(${art.id})">배경으로 설정</button>`
+          }
+        </div>
+      </div>
+      <div class="art-card-info">
+        <div class="art-card-title">${art.title}</div>
+        <div class="art-card-artist">${art.artist}</div>
+        <div class="art-card-footer">
+          <span class="art-card-year">${art.year > 0 ? art.year : '연도미상'}</span>
+          <span class="art-badge ${art.premium?'premium':'free'}">${art.source ? art.source.split(' ')[0] : (art.premium?'PREMIUM':'FREE')}</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // 썸네일 로드 검증 — 실패 시 원본 URL로 폴백
+  requestAnimationFrame(() => validateThumbs(filtered));
+}
+
+// 갤러리 카드 썸네일 검증 함수
+function validateThumbs(artList) {
+  artList.forEach(art => {
+    const el = document.getElementById(`card-img-${art.id}`);
+    if (!el) return;
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.onload = () => {};
+    img.onerror = () => {
+      const fallbackImg = new Image();
+      fallbackImg.referrerPolicy = 'no-referrer';
+      fallbackImg.onload = () => {
+        if (el) el.style.backgroundImage = `url(${art.url})`;
+      };
+      fallbackImg.onerror = () => {
+        if (el) el.style.background = 'linear-gradient(135deg, #1a1a20 0%, #2a2a35 100%)';
+      };
+      fallbackImg.src = art.url;
+    };
+    img.src = art.thumb;
+  });
+}
+
+function handleArtClick(id) {
+  const art = artworks.find(a => a.id === id);
+  if (!art) return;
+  if (art.premium && !isPremium) {
+    openPaymentModal();
+    return;
+  }
+  setAsCurrent(id);
+}
+
+function setAsCurrent(id) {
+  const idx = artworks.findIndex(a => a.id === id);
+  if (idx < 0) return;
+  currentIndex = idx;
+  loadArtwork(currentIndex);
+  showPage('home');
+  resetTimer();
+  showToast('배경화면이 변경되었습니다', 'success');
+}
+
+function setAsWallpaper() {
+  const art = artworks[currentIndex];
+  showToast(`"${art.title}" 저장 중...`, 'gold');
+  setTimeout(() => {
+    const a = document.createElement('a');
+    a.href = art.url;
+    a.download = art.titleEn.replace(/ /g,'_') + '.jpg';
+    a.target = '_blank';
+    a.click();
+    showToast('이미지를 저장했습니다', 'success');
+  }, 800);
+}
+
+// ── NAVIGATION ──
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.page === page);
+  });
+  document.getElementById('page-' + page).classList.add('active');
+}
+
+// ── LOGIN ──
+function openLoginModal() {
+  if (isLoggedIn) { doLogout(); return; }
+  showLoginView('social');
+  document.getElementById('loginModal').classList.add('active');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// LOGIN SYSTEM — Firebase Auth 실제 연동
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ── 로그인 뷰 전환 ─────────────────────────────────────────────────
+function showLoginView(view) {
+  ['social','email','register','reset'].forEach(v => {
+    const el = document.getElementById(`loginView-${v}`);
+    if (el) el.style.display = v === view ? 'block' : 'none';
+  });
+  // 에러 초기화
+  ['loginError','registerError','resetError','resetMsg'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
+// ── 비밀번호 표시/숨김 ─────────────────────────────────────────────
+function togglePwVis(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+  else { input.type = 'password'; btn.textContent = '👁'; }
+}
+
+// ── Firebase 에러 메시지 한국어 변환 ──────────────────────────────
+function firebaseErrMsg(code) {
+  const map = {
+    'auth/invalid-email':           '이메일 형식이 올바르지 않습니다.',
+    'auth/user-not-found':          '등록되지 않은 이메일입니다.',
+    'auth/wrong-password':          '비밀번호가 틀렸습니다.',
+    'auth/email-already-in-use':    '이미 사용 중인 이메일입니다.',
+    'auth/weak-password':           '비밀번호는 6자 이상이어야 합니다.',
+    'auth/too-many-requests':       '잠시 후 다시 시도해주세요.',
+    'auth/popup-closed-by-user':    '로그인 창이 닫혔습니다.',
+    'auth/cancelled-popup-request': '로그인이 취소되었습니다.',
+    'auth/network-request-failed':  '네트워크 연결을 확인해주세요.',
+    'auth/invalid-credential':      '이메일 또는 비밀번호가 올바르지 않습니다.',
+  };
+  return map[code] || '로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
+}
+
+// ── 로그인 성공 공통 처리 ─────────────────────────────────────────
+function onLoginSuccess(user) {
+  isLoggedIn = true;
+  closeModal('loginModal');
+  const btn = document.getElementById('login-btn');
+  btn.textContent = '로그아웃';
+  btn.classList.add('logged-in');
+  document.getElementById('userAvatar').classList.add('show');
+  const name = user.displayName || user.email?.split('@')[0] || '사용자';
+  showToast(`${name}님, 환영합니다 ✦`, 'success');
+  renderGallery();
+}
+
+// ── 로그아웃 ─────────────────────────────────────────────────────
+function doLogout() {
+  if (firebaseAuth) {
+    firebaseAuth.signOut().catch(e => console.warn('[logout]', e));
+  }
+  isLoggedIn = false; isPremium = false;
+  const btn = document.getElementById('login-btn');
+  btn.textContent = '로그인';
+  btn.classList.remove('logged-in');
+  document.getElementById('userAvatar').classList.remove('show');
+  renderGallery();
+  showToast('로그아웃되었습니다', '');
+}
+
+// ── Firebase Auth 상태 리스너 ─────────────────────────────────────
+if (firebaseAuth) {
+  firebaseAuth.onAuthStateChanged(user => {
+    if (user && !isLoggedIn) {
+      isLoggedIn = true;
+      document.getElementById('login-btn').textContent = '로그아웃';
+      document.getElementById('login-btn').classList.add('logged-in');
+      document.getElementById('userAvatar').classList.add('show');
+    }
+  });
+}
+
+// ── Google 로그인 (Firebase Popup) ───────────────────────────────
+async function loginWithGoogle() {
+  if (!firebaseAuth) { showToast('Firebase 설정이 필요합니다.', ''); return; }
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const result = await firebaseAuth.signInWithPopup(provider);
+    onLoginSuccess(result.user);
+  } catch (e) {
+    console.error('[Google login]', e);
+    showToast(firebaseErrMsg(e.code), '');
+  }
+}
+
+// ── Facebook 로그인 (Firebase Popup) ─────────────────────────────
+async function loginWithFacebook() {
+  if (!firebaseAuth) { showToast('Firebase 설정이 필요합니다.', ''); return; }
+  try {
+    const provider = new firebase.auth.FacebookAuthProvider();
+    provider.addScope('email');
+    const result = await firebaseAuth.signInWithPopup(provider);
+    onLoginSuccess(result.user);
+  } catch (e) {
+    console.error('[Facebook login]', e);
+    showToast(firebaseErrMsg(e.code), '');
+  }
+}
+
+// ── GitHub 로그인 (Firebase Popup) ────────────────────────────────
+async function loginWithGitHub() {
+  if (!firebaseAuth) { showToast('Firebase 설정이 필요합니다.', ''); return; }
+  try {
+    const provider = new firebase.auth.GithubAuthProvider();
+    provider.addScope('user:email');
+    const result = await firebaseAuth.signInWithPopup(provider);
+    onLoginSuccess(result.user);
+  } catch (e) {
+    console.error('[GitHub login]', e);
+    showToast(firebaseErrMsg(e.code), '');
+  }
+}
+
+// ── 카카오 로그인 (Redirect 방식) ─────────────────────────────────
+function loginWithKakao() {
+  // 카카오 JS SDK 사용 가능 여부 확인
+  if (typeof Kakao !== 'undefined' && Kakao.isInitialized()) {
+    // 방법 A: Kakao JS SDK Redirect
+    Kakao.Auth.authorize({
+      redirectUri: KAKAO_REDIRECT_URI,
+      state: 'kakao_login',
+      prompt: 'login',
+    });
+  } else {
+    // 방법 B: 직접 OAuth URL 생성 (JS SDK 없이)
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id:     KAKAO_JS_KEY,
+      redirect_uri:  KAKAO_REDIRECT_URI,
+      state:         'kakao_login',
+      scope:         'profile_nickname,profile_image,account_email',
+    });
+    window.location.href = `https://kauth.kakao.com/oauth/authorize?${params}`;
+  }
+}
+
+// ── 네이버 로그인 (Redirect 방식) ────────────────────────────────
+function loginWithNaver() {
+  sessionStorage.setItem('naver_state', NAVER_STATE);
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id:     NAVER_CLIENT_ID,
+    redirect_uri:  NAVER_REDIRECT_URI,
+    state:         NAVER_STATE,
+  });
+  window.location.href = `https://nid.naver.com/oauth2.0/authorize?${params}`;
+}
+
+// ── OAuth Callback 처리 (페이지 로드 시 URL 파라미터 확인) ──────────
+async function handleOAuthCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code    = params.get('code');
+  const state   = params.get('state');
+  const error   = params.get('error');
+
+  if (!code) return;
+
+  // 에러 처리
+  if (error) {
+    showToast('로그인이 취소되었습니다.', '');
+    window.history.replaceState({}, '', window.location.pathname);
+    return;
+  }
+
+  showToast('로그인 처리 중...', '');
+
+  try {
+    let endpoint = '';
+    if (state === 'kakao_login') {
+      endpoint = `${FUNCTIONS_BASE}/kakaoAuth?code=${code}`;
+    } else if (state === sessionStorage.getItem('naver_state')) {
+      endpoint = `${FUNCTIONS_BASE}/naverAuth?code=${code}&state=${state}`;
+      sessionStorage.removeItem('naver_state');
+    } else {
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
+    }
+
+    const res  = await fetch(endpoint);
+    const data = await res.json();
+
+    if (!res.ok || !data.token) {
+      throw new Error(data.message || '토큰 발급 실패');
+    }
+
+    // Firebase 커스텀 토큰으로 로그인
+    if (firebaseAuth) {
+      const result = await firebaseAuth.signInWithCustomToken(data.token);
+      onLoginSuccess(result.user);
+    } else {
+      // Firebase 미설정 시 임시 처리
+      isLoggedIn = true;
+      onLoginSuccess({ displayName: data.displayName, email: data.email });
+    }
+
+    // URL 파라미터 제거
+    window.history.replaceState({}, '', window.location.pathname);
+
+  } catch (e) {
+    console.error('[OAuth callback]', e);
+    showToast(`로그인 오류: ${e.message}`, '');
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+}
+
+// ── 이메일 로그인 ─────────────────────────────────────────────────
+async function loginWithEmail() {
+  if (!firebaseAuth) { showLoginError('loginError', 'Firebase 설정이 필요합니다.'); return; }
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw    = document.getElementById('loginPassword').value;
+  if (!email || !pw) { showLoginError('loginError', '이메일과 비밀번호를 입력해주세요.'); return; }
+
+  const btn = document.getElementById('emailLoginBtn');
+  btn.textContent = '로그인 중...'; btn.disabled = true;
+
+  try {
+    const result = await firebaseAuth.signInWithEmailAndPassword(email, pw);
+    onLoginSuccess(result.user);
+  } catch (e) {
+    showLoginError('loginError', firebaseErrMsg(e.code));
+  } finally {
+    btn.textContent = '로그인'; btn.disabled = false;
+  }
+}
+
+// ── 이메일 회원가입 ───────────────────────────────────────────────
+async function registerWithEmail() {
+  if (!firebaseAuth) { showLoginError('registerError', 'Firebase 설정이 필요합니다.'); return; }
+  const name    = document.getElementById('regName').value.trim();
+  const email   = document.getElementById('regEmail').value.trim();
+  const pw      = document.getElementById('regPassword').value;
+  const pwConf  = document.getElementById('regPasswordConfirm').value;
+
+  if (!name || !email || !pw) { showLoginError('registerError', '모든 항목을 입력해주세요.'); return; }
+  if (pw !== pwConf)          { showLoginError('registerError', '비밀번호가 일치하지 않습니다.'); return; }
+  if (pw.length < 6)          { showLoginError('registerError', '비밀번호는 6자 이상이어야 합니다.'); return; }
+
+  try {
+    const result = await firebaseAuth.createUserWithEmailAndPassword(email, pw);
+    await result.user.updateProfile({ displayName: name });
+    onLoginSuccess(result.user);
+  } catch (e) {
+    showLoginError('registerError', firebaseErrMsg(e.code));
+  }
+}
+
+// ── 비밀번호 재설정 ───────────────────────────────────────────────
+async function sendPasswordReset() {
+  if (!firebaseAuth) { showLoginError('resetError', 'Firebase 설정이 필요합니다.'); return; }
+  const email = document.getElementById('resetEmail').value.trim();
+  if (!email) { showLoginError('resetError', '이메일을 입력해주세요.'); return; }
+
+  try {
+    await firebaseAuth.sendPasswordResetEmail(email);
+    const msg = document.getElementById('resetMsg');
+    msg.textContent = `${email}로 재설정 링크를 보냈습니다.`;
+    msg.style.display = 'block';
+    document.getElementById('resetError').style.display = 'none';
+  } catch (e) {
+    showLoginError('resetError', firebaseErrMsg(e.code));
+  }
+}
+
+// ── 에러 메시지 표시 헬퍼 ─────────────────────────────────────────
+function showLoginError(elId, msg) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ── Enter 키 로그인 지원 ──────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  handleOAuthCallback(); // OAuth 리다이렉트 처리
+
+  // Kakao JS SDK 초기화 (SDK가 로드된 경우)
+  if (typeof Kakao !== 'undefined') {
+    Kakao.init(KAKAO_JS_KEY);
+    console.log('[Kakao SDK] 초기화 완료');
+  }
+
+  ['loginPassword', 'loginEmail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') loginWithEmail(); });
+  });
+  ['regPasswordConfirm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') registerWithEmail(); });
+  });
+});
+
+// ── PAYMENT ──
+function openPaymentModal() {
+  if (!isLoggedIn) { openLoginModal(); return; }
+  document.getElementById('paymentModal').classList.add('active');
+}
+
+function selectPlan(plan) {
+  selectedPlan = plan;
+  document.getElementById('plan-month').classList.toggle('selected', plan === 'month');
+  document.getElementById('plan-year').classList.toggle('selected', plan === 'year');
+}
+
+function processPayment() {
+  closeModal('paymentModal');
+  setTimeout(() => {
+    isPremium = true;
+    document.getElementById('currentPlan').textContent = `프리미엄 플랜 — 500+ 작품 무제한 이용`;
+    renderGallery();
+    showToast('🎉 프리미엄 구독이 시작되었습니다!', 'gold');
+  }, 600);
+}
+
+// ── MODAL ──
+function closeModal(id) {
+  document.getElementById(id).classList.remove('active');
+}
+
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('active');
+  });
+});
+
+// ── TOAST ──
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(t._timeout);
+  t._timeout = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── FULLSCREEN ──
+let isFullscreen = false;
+let uiHideTimer = null;
+
+const fsIconExpand = `<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>`;
+const fsIconCollapse = `<path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>`;
+
+function toggleFullscreen() {
+  if (!isFullscreen) {
+    enterFullscreen();
+  } else {
+    exitFullscreen();
+  }
+}
+
+function enterFullscreen() {
+  isFullscreen = true;
+  // 전체화면 진입 시 반드시 홈 페이지로 이동
+  showPage('home');
+  document.body.classList.add('fullscreen-mode');
+  document.getElementById('fsIcon').innerHTML = fsIconCollapse;
+  document.getElementById('fullscreenBtn').title = '전체화면 종료';
+
+  // 브라우저 네이티브 전체화면 API
+  const el = document.documentElement;
+  if (el.requestFullscreen) el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  else if (el.mozRequestFullScreen) el.mozRequestFullScreen();
+
+  // 힌트 표시
+  const hint = document.getElementById('fsHint');
+  hint.classList.add('show');
+  setTimeout(() => hint.classList.remove('show'), 2800);
+
+  // 마우스 이동 시 UI 표시
+  document.addEventListener('mousemove', onFsMouseMove);
+  startUiHideTimer();
+  showToast('전체화면 모드 — 마우스 이동으로 컨트롤 표시', 'gold');
+}
+
+function exitFullscreen() {
+  isFullscreen = false;
+  document.body.classList.remove('fullscreen-mode', 'show-ui');
+  document.getElementById('fsIcon').innerHTML = fsIconExpand;
+  document.getElementById('fullscreenBtn').title = '전체화면';
+
+  if (document.exitFullscreen) document.exitFullscreen();
+  else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+
+  document.removeEventListener('mousemove', onFsMouseMove);
+  clearTimeout(uiHideTimer);
+  showToast('전체화면 종료', '');
+}
+
+function onFsMouseMove() {
+  document.body.classList.add('show-ui');
+  clearTimeout(uiHideTimer);
+  startUiHideTimer();
+}
+
+function startUiHideTimer() {
+  uiHideTimer = setTimeout(() => {
+    document.body.classList.remove('show-ui');
+  }, 3000);
+}
+
+// ESC 키 / 브라우저 전체화면 변경 감지
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && isFullscreen) exitFullscreen();
+});
+document.addEventListener('webkitfullscreenchange', () => {
+  if (!document.webkitFullscreenElement && isFullscreen) exitFullscreen();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && isFullscreen) exitFullscreen();
+  if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+  if (e.key === 'ArrowRight') nextArt();
+  if (e.key === 'ArrowLeft') prevArt();
+  if (e.key === ' ') { e.preventDefault(); togglePause(); }
+});
+
+// ── CHROMECAST ──
+let castState = { active: false, device: null, sessionId: null };
+
+// __onGCastApiAvailable 는 <head>에 선언됨 (SDK 로드 전 필수)
+
+function initCastApi() {
+  const GALERIE_APP_ID = '83B532DF'; // Google Cast SDK App ID (cast.google.com 등록)
+
+  try {
+    cast.framework.CastContext.getInstance().setOptions({
+      receiverApplicationId: GALERIE_APP_ID,
+      autoJoinPolicy: chrome.cast.AutoJoinPolicy.TAB_AND_ORIGIN_SCOPED,
+      resumeSavedSession: false,
+    });
+    console.log('[Cast] SDK 초기화 완료. App ID:', GALERIE_APP_ID);
+  } catch (e) {
+    console.error('[Cast] SDK 초기화 실패:', e);
+    return;
+  }
+
+  const castContext = cast.framework.CastContext.getInstance();
+
+  // 상태 변경 리스너
+  castContext.addEventListener(
+    cast.framework.CastContextEventType.CAST_STATE_CHANGED,
+    (e) => {
+      const state = e.castState;
+      console.log('[Cast] 상태 변경:', state);
+      if (state === cast.framework.CastState.CONNECTED) {
+        const session = castContext.getCurrentSession();
+        castState.active = true;
+        castState.device = session.getCastDevice().friendlyName;
+        onCastConnected();
+      } else if (state === cast.framework.CastState.NOT_CONNECTED) {
+        if (castState.active) stopCasting();
+      }
+    }
+  );
+
+  // Cast 버튼 아이콘 상태 업데이트
+  castContext.addEventListener(
+    cast.framework.CastContextEventType.CAST_STATE_CHANGED,
+    (e) => {
+      const btn = document.getElementById('castBtn');
+      if (!btn) return;
+      const isAvailable = e.castState !== cast.framework.CastState.NO_DEVICES_AVAILABLE;
+      btn.style.opacity = isAvailable ? '1' : '0.4';
+      btn.title = isAvailable ? 'TV로 전송 (Chromecast)' : 'Chromecast 기기 없음';
+    }
+  );
+}
+
+function openDonation(platform) {
+  const urls = {
+    kofi:  'https://ko-fi.com/bittory',
+    kakao: 'https://qr.kakaopay.com/Ej9Eq4BRN',
+  };
+  const url = urls[platform];
+  if (url) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+
+function openCastModal() {
+  // ── Cast SDK 로드 여부 확인 ──
+  if (typeof cast === 'undefined' || !cast.framework) {
+    showToast('Cast SDK 미로드 — HTTPS 환경(GitHub Pages)에서 실행하세요.', '');
+    console.warn('[Cast] SDK 미로드. typeof cast:', typeof cast);
+    return;
+  }
+
+  const ctx = cast.framework.CastContext.getInstance();
+  const state = ctx.getCastState();
+
+  // 디버그용 상태 로그
+  console.log('[Cast] CastState:', state);
+  console.log('[Cast] CastState enum:', cast.framework.CastState);
+
+  // 이미 연결된 경우 → 중단
+  if (state === cast.framework.CastState.CONNECTED) {
+    stopCasting();
+    return;
+  }
+
+  // NO_DEVICES_AVAILABLE 이어도 requestSession 시도
+  // (SDK가 기기 탐색 중이거나 일시적 상태일 수 있음)
+  if (state === cast.framework.CastState.NO_DEVICES_AVAILABLE) {
+    console.warn('[Cast] NO_DEVICES_AVAILABLE — requestSession 강제 시도');
+  }
+
+  // 실제 Google Cast 기기 선택 다이얼로그 호출
+  ctx.requestSession()
+    .then(() => {
+      console.log('[Cast] requestSession 성공');
+    })
+    .catch((err) => {
+      console.warn('[Cast] requestSession 오류:', err);
+      // 사용자가 취소한 경우 조용히 처리
+      if (err === 'cancel' ||
+          err === cast.framework.CastContextEventType.SESSION_ENDED ||
+          (typeof err === 'string' && err.includes('cancel'))) {
+        return;
+      }
+      // NO_DEVICES 에러인 경우
+      if (err === cast.framework.CastState.NO_DEVICES_AVAILABLE ||
+          (typeof err === 'string' && err.includes('RECEIVER_UNAVAILABLE'))) {
+        showToast('Chromecast 기기를 찾을 수 없습니다. 같은 Wi-Fi + Chrome 브라우저를 확인하세요.', '');
+        return;
+      }
+      showToast('연결 실패: ' + (err?.message || err), '');
+    });
+}
+
+function onCastConnected() {
+  const art = artworks[currentIndex];
+
+  // Cast 버튼 상태 변경
+  document.getElementById('castBtn').classList.add('casting');
+
+  // 상단 캐스트 바
+  document.getElementById('castBarArtwork').textContent = art.title;
+  document.getElementById('castBarDevice').textContent = `→ ${castState.device}`;
+  document.getElementById('castBar').classList.add('active');
+
+  // TV 미니 프리뷰
+  const preview = document.getElementById('castTvPreview');
+  document.getElementById('castTvImg').style.backgroundImage = `url(${art.url})`;
+  preview.classList.add('active');
+
+  // 볼륨 슬라이더
+  document.getElementById('castVolumeRow').classList.add('show');
+
+  // 설정 상태 업데이트
+  document.getElementById('castSettingsStatus').textContent = `${castState.device}에 연결됨`;
+
+  // 실제 미디어 캐스팅 (Cast API 사용 가능 시)
+  if (typeof cast !== 'undefined' && cast.framework) {
+    castMediaToDevice(art);
+  }
+
+  showToast(`📺 ${castState.device}로 전송 시작`, 'success');
+}
+
+// 커스텀 메시지 네임스페이스 (Receiver 앱과 동일하게 맞춰야 함)
+const CAST_NAMESPACE = 'urn:x-cast:com.galerie.artwork';
+
+function castMediaToDevice(art) {
+  try {
+    const session = cast.framework.CastContext.getInstance().getCurrentSession();
+    if (!session) return;
+
+    // ① 이미지 미디어 로드 (Receiver에서 배경으로 표시)
+    const mediaInfo = new chrome.cast.media.MediaInfo(art.url, 'image/jpeg');
+    mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
+    mediaInfo.metadata.metadataType = chrome.cast.media.MetadataType.GENERIC;
+    mediaInfo.metadata.title  = art.title;
+    mediaInfo.metadata.subtitle = `${art.artist} · ${art.year > 0 ? art.year : '연도미상'}`;
+
+    // customData에 전체 작품 정보를 담아 Receiver로 전달
+    mediaInfo.customData = {
+      title:    art.title,
+      artist:   art.artist,
+      year:     art.year,
+      movement: art.movement,
+      origin:   art.origin,
+      url:      art.url,
+      source:   art.source || '',
+    };
+
+    const request = new chrome.cast.media.LoadRequest(mediaInfo);
+    session.loadMedia(request).then(
+      () => {
+        console.log('Cast: media loaded');
+        // ② 커스텀 채널로 작품 메타데이터 별도 전송 (Receiver UI 갱신)
+        session.sendMessage(CAST_NAMESPACE, {
+          type:     'ARTWORK',
+          title:    art.title,
+          artist:   art.artist,
+          year:     art.year,
+          movement: art.movement,
+          origin:   art.origin,
+          url:      art.url,
+          source:   art.source || '',
+        });
+      },
+      (e) => console.warn('Cast: load error', e)
+    );
+  } catch(e) { console.warn('Cast API error:', e); }
+}
+
+function stopCasting() {
+  castState.active = false;
+
+  document.getElementById('castBtn').classList.remove('casting');
+  document.getElementById('castBar').classList.remove('active');
+  document.getElementById('castTvPreview').classList.remove('active');
+  document.getElementById('castVolumeRow').classList.remove('show');
+  document.getElementById('castSettingsStatus').textContent = '연결된 기기 없음';
+
+  // 실제 세션 종료
+  if (typeof cast !== 'undefined' && cast.framework) {
+    const session = cast.framework.CastContext.getInstance().getCurrentSession();
+    if (session) session.endSession(true);
+  }
+
+  showToast('TV 전송이 중단되었습니다', '');
+}
+
+function setCastVolume(val) {
+  document.getElementById('castVolVal').textContent = val;
+  // 실제 Cast 볼륨 제어
+  if (typeof cast !== 'undefined' && cast.framework) {
+    const session = cast.framework.CastContext.getInstance().getCurrentSession();
+    if (session) {
+      session.setVolume(parseInt(val) / 100)
+        .catch(e => console.warn('Volume error:', e));
+    }
+  }
+}
+
+// 아트워크 변경 시 캐스팅 중이면 업데이트
+const _origLoadArtwork = loadArtwork;
+loadArtwork = function(idx, animate) {
+  _origLoadArtwork(idx, animate);
+  if (castState.active) {
+    const art = artworks[idx];
+    if (!art) return;
+    document.getElementById('castBarArtwork').textContent = art.title;
+    document.getElementById('castTvImg').style.backgroundImage = `url(${art.url})`;
+    if (typeof cast !== 'undefined' && cast.framework) {
+      setTimeout(() => castMediaToDevice(art), 800);
+    }
+  }
+};
+</script>
+</body>
+</html>

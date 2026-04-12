@@ -1,0 +1,7 @@
+node_modules/
+www/images/
+images/
+*.bak
+*_bak*.html
+failed_list.txt
+failed_analysis.txt

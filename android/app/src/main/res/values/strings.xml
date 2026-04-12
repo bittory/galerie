@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">galerie</string>
+    <string name="title_activity_main">galerie</string>
+    <string name="package_name">com.bittory.galerie</string>
+    <string name="custom_url_scheme">com.bittory.galerie</string>
+</resources>
