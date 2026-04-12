@@ -1,5 +1,5 @@
 node_modules/
-# images/ (removed - tracking www/images/ in git)
+images/
 *.bak
 *_bak*.html
 failed_list.txt
