@@ -194,6 +194,11 @@ try {
   .artwork-info {
     max-width: 600px;
     animation: slideUp 0.8s ease forwards;
+    padding: 18px 22px;
+    background: linear-gradient(135deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.15) 80%, transparent 100%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 4px;
   }
   @keyframes slideUp {
     from { opacity: 0; transform: translateY(30px); }
@@ -210,7 +215,14 @@ try {
     font-weight: 300;
     line-height: 1.1;
     color: #fff;
-    text-shadow: 0 2px 20px rgba(0,0,0,0.8);
+    text-shadow:
+      0 0 6px rgba(0,0,0,1),
+      0 0 14px rgba(0,0,0,0.9),
+      0 0 28px rgba(0,0,0,0.7),
+      -1px -1px 0 rgba(0,0,0,0.6),
+       1px -1px 0 rgba(0,0,0,0.6),
+      -1px  1px 0 rgba(0,0,0,0.6),
+       1px  1px 0 rgba(0,0,0,0.6);
     margin-bottom: 8px;
   }
   .artwork-artist {
@@ -218,11 +230,25 @@ try {
     font-size: 20px;
     font-style: italic;
     color: var(--gold-light);
+    text-shadow:
+      0 0 6px rgba(0,0,0,1),
+      0 0 14px rgba(0,0,0,0.9),
+      0 0 24px rgba(0,0,0,0.7),
+      -1px -1px 0 rgba(0,0,0,0.5),
+       1px  1px 0 rgba(0,0,0,0.5);
     margin-bottom: 6px;
   }
   .artwork-meta {
-    font-size: 13px; color: rgba(255,255,255,0.6);
-    letter-spacing: 2px; font-weight: 300;
+    font-size: 13px;
+    color: rgba(255,255,255,0.9);
+    letter-spacing: 2px;
+    font-weight: 300;
+    text-shadow:
+      0 0 5px rgba(0,0,0,1),
+      0 0 12px rgba(0,0,0,0.9),
+      0 0 20px rgba(0,0,0,0.7),
+      -1px -1px 0 rgba(0,0,0,0.5),
+       1px  1px 0 rgba(0,0,0,0.5);
   }
 
   .wallpaper-controls {
@@ -832,6 +858,23 @@ try {
   <!-- HOME PAGE -->
   <div id="page-home" class="page active">
     <div class="wallpaper-hero">
+      <!-- 상단 브랜딩 오버레이: 이미지 로딩 후 표시 → 3초 후 fade out -->
+      <div id="heroBrand" style="
+        position:absolute; top:32px; left:50%; transform:translateX(-50%);
+        text-align:center; z-index:20; pointer-events:none;
+        opacity:0; transition:opacity 0.8s ease;
+      ">
+        <div style="
+          font-family:var(--font-title); font-size:28px; letter-spacing:10px;
+          color:rgba(245,240,232,0.9);
+          text-shadow: 0 0 8px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.7), 0 0 40px rgba(0,0,0,0.5);
+        ">GALERIE</div>
+        <div style="
+          font-family:var(--font-ui); font-size:10px; letter-spacing:6px;
+          color:rgba(201,168,76,0.7); margin-top:4px;
+          text-shadow: 0 0 6px rgba(0,0,0,0.9), 0 0 14px rgba(0,0,0,0.7);
+        ">MASTERPIECE GALLERY</div>
+      </div>
       <div class="artwork-info" id="artworkInfo">
         <div class="artwork-badge free" id="artBadge">✦ FREE</div>
         <div class="artwork-title" id="artTitle">별이 빛나는 밤</div>
@@ -1290,18 +1333,18 @@ const localArtworks = [
   // ── 동양화 — 일본 우키요에 (호쿠사이 · 히로시게) ──────
 
   // ── 동양화 — 조선 회화 ───────────────────────────────
-  { id:89, title:"인왕제색도", titleEn:"Clearing after Rain on Mt. Inwang", artist:"정선 (鄭敾)", year:1751, movement:"진경산수화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg/1280px-Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg/600px-Jeong_Seon-Clearing_after_Rain_on_Mt._Inwang.jpg", category:"동양화" },
+  { id:89, title:"인왕제색도", titleEn:"Clearing after Rain on Mt. Inwang", artist:"정선 (鄭敾)", year:1751, movement:"진경산수화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Inwangjesaekdo.jpg/1280px-Inwangjesaekdo.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Inwangjesaekdo.jpg/600px-Inwangjesaekdo.jpg", category:"동양화" },
   { id:90, title:"금강전도", titleEn:"Diamond Mountains", artist:"정선 (鄭敾)", year:1734, movement:"진경산수화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/JeongSeon-GeumgangJeondo.jpg/932px-JeongSeon-GeumgangJeondo.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/JeongSeon-GeumgangJeondo.jpg/600px-JeongSeon-GeumgangJeondo.jpg", category:"동양화" },
   { id:91, title:"미인도", titleEn:"Portrait of a Beauty", artist:"신윤복 (申潤福)", year:1805, movement:"풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Shin_Yun-bok-Portrait_of_a_Beauty.jpg/549px-Shin_Yun-bok-Portrait_of_a_Beauty.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Shin_Yun-bok-Portrait_of_a_Beauty.jpg/400px-Shin_Yun-bok-Portrait_of_a_Beauty.jpg", category:"동양화" },
   { id:92, title:"씨름", titleEn:"Ssireum (Korean Wrestling)", artist:"김홍도 (金弘道)", year:1778, movement:"풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Kim_Hongdo-Ssireum.jpg/952px-Kim_Hongdo-Ssireum.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Kim_Hongdo-Ssireum.jpg/600px-Kim_Hongdo-Ssireum.jpg", category:"동양화" },
   { id:93, title:"단원 풍속도첩 — 서당", titleEn:"Village School", artist:"김홍도 (金弘道)", year:1778, movement:"풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Kim_Hongdo-Village_school.jpg/836px-Kim_Hongdo-Village_school.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Kim_Hongdo-Village_school.jpg/600px-Kim_Hongdo-Village_school.jpg", category:"동양화" },
   { id:94, title:"월하정인", titleEn:"Lovers Meeting by Moonlight", artist:"신윤복 (申潤福)", year:1805, movement:"풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Hyewon-Wolha_jeong_in.jpg/718px-Hyewon-Wolha_jeong_in.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Hyewon-Wolha_jeong_in.jpg/600px-Hyewon-Wolha_jeong_in.jpg", category:"동양화" },
   { id:95, title:"단오풍정", titleEn:"Festival of Dano", artist:"신윤복 (申潤福)", year:1805, movement:"풍속화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Hyewon-Dano_pungjeong.jpg/1096px-Hyewon-Dano_pungjeong.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Hyewon-Dano_pungjeong.jpg/800px-Hyewon-Dano_pungjeong.jpg", category:"동양화" },
-  { id:96, title:"세한도", titleEn:"Suseodo (Winter Landscape)", artist:"김정희 (金正喜)", year:1844, movement:"문인화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Kim_Jeong-Hui-Suseodo.jpg/1280px-Kim_Jeong-Hui-Suseodo.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Kim_Jeong-Hui-Suseodo.jpg/800px-Kim_Jeong-Hui-Suseodo.jpg", category:"동양화" },
+  { id:96, title:"세한도", titleEn:"Sehando (Winter Landscape)", artist:"김정희 (金正喜)", year:1844, movement:"문인화", origin:"조선", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Sehando.jpg/1280px-Sehando.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Sehando.jpg/800px-Sehando.jpg", category:"동양화" },
 
   // ── 동양화 — 중국 산수화 ─────────────────────────────
   { id:97, title:"청명상하도 (부분)", titleEn:"Along the River During Qingming Festival", artist:"장택단 (張擇端)", year:1120, movement:"송대 회화", origin:"중국", premium:false, url:"images/full/097_full.jpg", thumb:"images/thumb/097_thumb.jpg", category:"동양화" },
-  { id:98, title:"부춘산거도", titleEn:"Dwelling in the Fuchun Mountains", artist:"황공망 (黃公望)", year:1350, movement:"원대 산수화", origin:"중국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Dwelling_in_the_Fuchun_Mountains.jpg/1280px-Dwelling_in_the_Fuchun_Mountains.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Dwelling_in_the_Fuchun_Mountains.jpg/800px-Dwelling_in_the_Fuchun_Mountains.jpg", category:"동양화" },
+  { id:98, title:"부춘산거도", titleEn:"Dwelling in the Fuchun Mountains", artist:"황공망 (黃公望)", year:1350, movement:"원대 산수화", origin:"중국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Dwelling_in_the_Fuchun_Mountains_%28second_half%29.jpg/1280px-Dwelling_in_the_Fuchun_Mountains_%28second_half%29.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Dwelling_in_the_Fuchun_Mountains_%28second_half%29.jpg/800px-Dwelling_in_the_Fuchun_Mountains_%28second_half%29.jpg", category:"동양화" },
   { id:99, title:"묵죽도", titleEn:"Ink Bamboo", artist:"정판교 (鄭板橋)", year:1750, movement:"청대 회화", origin:"중국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Bamboo_painting_Zheng_Xie.jpg/534px-Bamboo_painting_Zheng_Xie.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Bamboo_painting_Zheng_Xie.jpg/400px-Bamboo_painting_Zheng_Xie.jpg", category:"동양화" },
   { id:100, title:"낙신부도 (부분)", titleEn:"Nymph of the Luo River", artist:"고개지 (顧愷之) 모사", year:400, movement:"동진 회화", origin:"중국", premium:false, url:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Gu_Kaizhi_Luoshenfu_Freer.jpg/1280px-Gu_Kaizhi_Luoshenfu_Freer.jpg", thumb:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Gu_Kaizhi_Luoshenfu_Freer.jpg/800px-Gu_Kaizhi_Luoshenfu_Freer.jpg", category:"동양화" },
 
@@ -1775,6 +1818,17 @@ function loadArtwork(idx, animate = true) {
       info.style.animation = 'none';
       info.offsetHeight;
       info.style.animation = 'slideUp 0.8s ease forwards';
+
+      // 상단 브랜딩: 이미지 로딩 후 표시 → 3초 후 fade out
+      const heroBrand = document.getElementById('heroBrand');
+      if (heroBrand) {
+        clearTimeout(heroBrand._fadeTimer);
+        heroBrand.style.transition = 'opacity 0.8s ease';
+        heroBrand.style.opacity = '1';
+        heroBrand._fadeTimer = setTimeout(() => {
+          heroBrand.style.opacity = '0';
+        }, 3000);
+      }
 
       if (metArtworkCache.length + aicArtworkCache.length + clevelandArtworkCache.length < 15) {
         prefetchAllSources(1);

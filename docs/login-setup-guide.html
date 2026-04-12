@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GALERIE — 로그인 설정 가이드</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=DM+Sans:wght@300;400;500&display=swap');
+  :root {
+    --bg: #0d0c09; --surface: #1a1814; --border: rgba(255,255,255,0.08);
+    --gold: #c9a84c; --gold-light: #e8c97a; --text: #f5f0e8; --muted: rgba(245,240,232,0.45);
+    --ok: #4caf7d; --warn: #e8a040; --err: #e24b4a;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; font-size:14px; line-height:1.7; }
+  .hero { text-align:center; padding:64px 32px 40px; background:linear-gradient(to bottom,rgba(201,168,76,0.06),transparent); border-bottom:1px solid var(--border); }
+  .hero h1 { font-family:'Cormorant Garamond',serif; font-size:40px; font-weight:300; letter-spacing:8px; color:var(--gold); margin-bottom:8px; }
+  .hero p { color:var(--muted); letter-spacing:2px; font-size:12px; }
+  .container { max-width:820px; margin:0 auto; padding:48px 32px 80px; }
+  .status-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:48px; }
+  .status-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px 24px; display:flex; align-items:center; gap:16px; }
+  .status-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .dot-err { background:var(--err); box-shadow:0 0 8px var(--err); }
+  .dot-warn { background:var(--warn); box-shadow:0 0 8px var(--warn); }
+  .dot-ok { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+  .status-card h3 { font-size:14px; font-weight:500; margin-bottom:2px; }
+  .status-card p { font-size:12px; color:var(--muted); }
+  h2 { font-family:'Cormorant Garamond',serif; font-size:26px; font-weight:400; color:var(--gold-light); letter-spacing:2px; margin-bottom:24px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+  .section { margin-bottom:52px; }
+  .step { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px 28px; margin-bottom:16px; position:relative; }
+  .step-num { position:absolute; top:24px; right:24px; font-family:'Cormorant Garamond',serif; font-size:36px; font-weight:300; color:rgba(201,168,76,0.15); line-height:1; }
+  .step h3 { font-size:15px; font-weight:500; margin-bottom:10px; color:var(--gold-light); }
+  .step p { color:rgba(245,240,232,0.75); margin-bottom:10px; }
+  .step p:last-child { margin-bottom:0; }
+  .step ul { padding-left:18px; color:rgba(245,240,232,0.75); }
+  .step ul li { margin-bottom:6px; }
+  .code { background:rgba(0,0,0,0.5); border:1px solid var(--border); border-radius:8px; padding:14px 18px; font-family:'Courier New',monospace; font-size:12px; color:#b8e4ff; margin:12px 0; line-height:1.8; overflow-x:auto; }
+  .code .key { color:var(--gold); }
+  .code .val { color:#a8e6a3; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:500; letter-spacing:1px; vertical-align:middle; margin-left:8px; }
+  .badge-err { background:rgba(226,75,74,0.15); border:1px solid rgba(226,75,74,0.3); color:var(--err); }
+  .badge-warn { background:rgba(232,160,64,0.15); border:1px solid rgba(232,160,64,0.3); color:var(--warn); }
+  .badge-ok { background:rgba(76,175,125,0.15); border:1px solid rgba(76,175,125,0.3); color:var(--ok); }
+  .tip { background:rgba(201,168,76,0.06); border:1px solid rgba(201,168,76,0.2); border-radius:8px; padding:14px 18px; margin:12px 0; font-size:13px; color:rgba(245,240,232,0.8); }
+  .tip strong { color:var(--gold); }
+  a { color:var(--gold-light); text-decoration:none; border-bottom:1px solid rgba(201,168,76,0.3); }
+  a:hover { border-color:var(--gold); }
+  @media(max-width:600px){ .status-grid{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>GALERIE</h1>
+  <p>LOGIN MODULE · SETUP GUIDE</p>
+</div>
+
+<div class="container">
+
+  <!-- 현재 상태 -->
+  <div class="status-grid">
+    <div class="status-card">
+      <div class="status-dot dot-err"></div>
+      <div>
+        <h3>Google 로그인 <span class="badge badge-err">오류</span></h3>
+        <p>Firebase 설정값 미입력 (YOUR_PROJECT_ID)</p>
+      </div>
+    </div>
+    <div class="status-card">
+      <div class="status-dot dot-err"></div>
+      <div>
+        <h3>카카오 로그인 <span class="badge badge-err">KOE101</span></h3>
+        <p>앱 관리자 설정 오류 — JavaScript 키 미입력</p>
+      </div>
+    </div>
+    <div class="status-card">
+      <div class="status-dot dot-warn"></div>
+      <div>
+        <h3>이메일 로그인 <span class="badge badge-warn">미설정</span></h3>
+        <p>Firebase 설정 완료 후 자동 활성화</p>
+      </div>
+    </div>
+    <div class="status-card">
+      <div class="status-dot dot-ok"></div>
+      <div>
+        <h3>GitHub 로그인 <span class="badge badge-ok">가능</span></h3>
+        <p>Firebase OAuth 설정만 추가하면 바로 사용 가능</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase / Google 설정 -->
+  <div class="section">
+    <h2>1. Firebase 설정 (Google 로그인 활성화)</h2>
+
+    <div class="step">
+      <div class="step-num">01</div>
+      <h3>Firebase 프로젝트 생성</h3>
+      <p>아직 프로젝트가 없다면:</p>
+      <ul>
+        <li><a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> 접속</li>
+        <li>프로젝트 추가 → 프로젝트 이름 입력 (예: galerie-app)</li>
+        <li>Google Analytics는 선택사항 (비활성화 가능)</li>
+      </ul>
+    </div>
+
+    <div class="step">
+      <div class="step-num">02</div>
+      <h3>웹 앱 등록 및 설정값 복사</h3>
+      <p>프로젝트 설정 → 내 앱 → 웹 앱 추가 (&#60;/&#62; 아이콘) → 설정값 복사</p>
+      <div class="code">
+const FIREBASE_CONFIG = {<br>
+&nbsp;&nbsp;<span class="key">apiKey</span>:            <span class="val">"AIza..."</span>,&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--muted)">// ← 여기 실제 값 입력</span><br>
+&nbsp;&nbsp;<span class="key">authDomain</span>:        <span class="val">"your-project.firebaseapp.com"</span>,<br>
+&nbsp;&nbsp;<span class="key">projectId</span>:         <span class="val">"your-project-id"</span>,<br>
+&nbsp;&nbsp;<span class="key">storageBucket</span>:     <span class="val">"your-project.appspot.com"</span>,<br>
+&nbsp;&nbsp;<span class="key">messagingSenderId</span>: <span class="val">"123456789"</span>,<br>
+&nbsp;&nbsp;<span class="key">appId</span>:             <span class="val">"1:123:web:abc"</span><br>
+};
+      </div>
+      <p>위 값을 <strong>docs/index.html</strong> 상단 FIREBASE_CONFIG 객체에 붙여넣기</p>
+    </div>
+
+    <div class="step">
+      <div class="step-num">03</div>
+      <h3>Authentication 공급자 활성화</h3>
+      <p>Firebase 콘솔 → Authentication → Sign-in method → 아래 공급자 활성화:</p>
+      <ul>
+        <li>✅ <strong>Google</strong> — 프로젝트 지원 이메일 입력 후 저장</li>
+        <li>✅ <strong>이메일/비밀번호</strong> — 활성화만 하면 됨</li>
+        <li>✅ <strong>GitHub</strong> (선택) — 클라이언트 ID/Secret 필요 (아래 4번)</li>
+      </ul>
+    </div>
+
+    <div class="step">
+      <div class="step-num">04</div>
+      <h3>승인된 도메인 등록</h3>
+      <p>Firebase 콘솔 → Authentication → Settings → 승인된 도메인 → 아래 추가:</p>
+      <div class="code">
+bittory.github.io<br>
+localhost
+      </div>
+      <div class="tip"><strong>중요:</strong> 이 도메인이 없으면 Google 로그인 팝업이 차단됩니다.</div>
+    </div>
+  </div>
+
+  <!-- 카카오 설정 -->
+  <div class="section">
+    <h2>2. 카카오 로그인 설정 (KOE101 해결)</h2>
+
+    <div class="step">
+      <div class="step-num">01</div>
+      <h3>Kakao Developers 앱 생성</h3>
+      <ul>
+        <li><a href="https://developers.kakao.com" target="_blank">developers.kakao.com</a> 접속 → 내 애플리케이션 → 애플리케이션 추가</li>
+        <li>앱 이름: GALERIE / 회사명 입력</li>
+      </ul>
+    </div>
+
+    <div class="step">
+      <div class="step-num">02</div>
+      <h3>JavaScript 키 복사 및 입력</h3>
+      <p>앱 설정 → 앱 키 → <strong>JavaScript 키</strong> 복사</p>
+      <div class="code">
+<span style="color:var(--muted)">// docs/index.html 상단 약 41번째 줄</span><br>
+const KAKAO_APP_KEY = <span class="val">"여기에_JavaScript_키_입력"</span>;
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">03</div>
+      <h3>플랫폼 등록 (KOE101 핵심 원인)</h3>
+      <p>앱 설정 → 플랫폼 → Web → 사이트 도메인 등록:</p>
+      <div class="code">
+https://bittory.github.io<br>
+http://localhost:8100<br>
+http://localhost:3000
+      </div>
+      <div class="tip"><strong>KOE101 원인:</strong> 등록되지 않은 도메인에서 SDK를 초기화하면 발생합니다. 도메인 등록 후 즉시 해결됩니다.</div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">04</div>
+      <h3>카카오 로그인 활성화</h3>
+      <ul>
+        <li>제품 설정 → 카카오 로그인 → 활성화 ON</li>
+        <li>Redirect URI 등록: <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:4px;font-size:12px;">https://bittory.github.io/galerie/</code></li>
+        <li>동의항목 → 닉네임, 프로필 사진 체크</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- GitHub OAuth (선택) -->
+  <div class="section">
+    <h2>3. GitHub 로그인 (선택 — 바로 사용 가능)</h2>
+
+    <div class="step">
+      <div class="step-num">01</div>
+      <h3>GitHub OAuth App 생성</h3>
+      <ul>
+        <li>GitHub → Settings → Developer settings → OAuth Apps → New OAuth App</li>
+        <li>Homepage URL: <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:4px;font-size:12px;">https://bittory.github.io/galerie/</code></li>
+        <li>Callback URL: Firebase 콘솔에서 GitHub 공급자 활성화 시 표시되는 URL 사용</li>
+      </ul>
+    </div>
+
+    <div class="step">
+      <div class="step-num">02</div>
+      <h3>Firebase에 Client ID/Secret 입력</h3>
+      <p>Firebase 콘솔 → Authentication → Sign-in method → GitHub → Client ID와 Client Secret 입력</p>
+    </div>
+  </div>
+
+  <!-- 요약 -->
+  <div class="section">
+    <h2>4. 최소 작업 요약 (가장 빠른 방법)</h2>
+    <div class="step">
+      <h3>Google 로그인만 빠르게 켜려면</h3>
+      <ol style="padding-left:18px;color:rgba(245,240,232,0.75);">
+        <li style="margin-bottom:8px">Firebase 콘솔 → 새 프로젝트 → 웹 앱 등록</li>
+        <li style="margin-bottom:8px">Authentication → Google 활성화 + 지원 이메일 입력</li>
+        <li style="margin-bottom:8px">승인된 도메인에 <strong>bittory.github.io</strong> 추가</li>
+        <li style="margin-bottom:8px">설정값을 <strong>docs/index.html</strong> FIREBASE_CONFIG에 붙여넣기</li>
+        <li>GitHub에 push → 완료</li>
+      </ol>
+      <div class="tip"><strong>예상 소요 시간:</strong> Firebase 신규 설정 기준 약 10분</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
